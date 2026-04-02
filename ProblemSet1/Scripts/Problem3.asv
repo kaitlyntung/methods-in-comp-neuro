@@ -4,49 +4,43 @@ load('Data\retinaData.mat');
 %% 3.1 Spike Triggered Average
 % Part A
 function strf = plot_strf(retinaData, neuron)
-    % data cleaning, get rid of all that have 0 like problem set says to do
-    valid = retinaData.stimulusFrameTimes ~= 0;
-    stimulusFrameTimes = retinaData.stimulusFrameTimes(valid);
-    stimulus = retinaData.stimulusFrames(:,:,valid) - 0.5;
-    stimulus = double(stimulus);
-    stimulusTimes = stimulusFrameTimes * 0.1; % convert to ms
-    stimulusTimes = double(stimulusTimes);
-    spikeTimes = retinaData.spikes{neuron} * 0.1;
-    spikeTimes = double(spikeTimes);
-    
-    lag_times = 300:-10:-10;
-    numLags = length(lag_times);
-    numSpikes = length(spikeTimes);
-    
-    stimulus_reshaped = reshape(stimulus, 1600, []);
-    spike_idx = round(interp1(stimulusTimes, ...
-        1:length(stimulusTimes), ...
-        spikeTimes, ...
-        'nearest', ...
-        'extrap'));
-    spike_idx = max(1, min(spike_idx, length(stimulusTimes)));
-    
-    strf = zeros(40, 40, numLags);
-    for lag = 1:numLags
-        lagFrames = round(lag_times(lag) / (1000/30));
-        offset_idx = spike_idx - lagFrames;
-        valid_idx = offset_idx >= 1 & offset_idx <= size(stimulus_reshaped, 2);
-        strf(:,:,lag) = reshape(sum(stimulus_reshaped(:, offset_idx(valid_idx)), 2), 40, 40);
-    end
-    strf = strf / numSpikes;
-    
-    % Plotting
-    figure;
-    max_val = max(abs(strf(:)));
-    for k = 1:numLags
-        subplot(6, 6, k);
-        img_scaled = (strf(:,:,k) + max_val) / (2 * max_val);
-        image(img_scaled * 255);
-        axis image off;
-        title(sprintf('%d ms', lag_times(k)), 'FontSize', 7);
-    end
-    colormap(gray(256));
-    sgtitle(sprintf('Neuron %d', neuron));
+% Data cleaning
+valid = retinaData.stimulusFrameTimes ~= 0;
+stimulusFrameTimes = retinaData.stimulusFrameTimes(valid);
+stimulus = double(retinaData.stimulusFrames(:,:,valid)) - 0.5;
+stimulusTimes = double(stimulusFrameTimes) * 0.1;
+spikeTimes = double(retinaData.spikes{neuron}) * 0.1;
+
+lags = 300:-10:-10;
+nLags = length(lags);
+spikeCount = length(spikeTimes);
+
+stimFlat = reshape(stimulus, 1600, []);
+spikeFrameIdx = round(interp1(stimulusTimes, 1:length(stimulusTimes), spikeTimes, 'nearest', 'extrap'));
+spikeFrameIdx = max(1, min(spikeFrameIdx, length(stimulusTimes)));
+
+strf = zeros(40, 40, nLags);
+for lag = 1:nLags
+    lagFrames = round(lags(lag) / (1000/30));
+    offsetIdx = spikeFrameIdx - lagFrames;
+    valid_idx = offsetIdx >= 1 & offsetIdx <= size(stimFlat, 2);
+    strf(:,:,lag) = reshape(sum(stimFlat(:, offsetIdx(valid_idx)), 2), 40, 40);
+end
+strf = strf / spikeCount;
+
+% Plotting
+figure;
+max_val = max(abs(strf(:)));
+for k = 1:nLags
+    subplot(6, 6, k);
+    img_scaled = (strf(:,:,k) + max_val) / (2 * max_val);
+    image(img_scaled * 255);
+    axis image off;
+    title(sprintf('%d ms', lags(k)), 'FontSize', 7);
+end
+colormap(gray(256));
+sgtitle(sprintf('STRF - Neuron %d', neuron));
+
 end
 
 %Part B
