@@ -15,7 +15,7 @@ lags = 300:-10:-10;
 nLags = length(lags);
 spikeCount = length(spikeTimes);
 
-% Pre-flatten stimulus: (1600 x nFrames)
+% Pre-flatten stimulus ONCE: (1600 x nFrames)
 stimFlat = reshape(stimulus, 1600, []);
 
 % Find nearest frame index for every spike ONCE
