@@ -16,3 +16,33 @@ for neuron = 1:neurons
 end
 
 %% Part B
+neurons = length(Data.spikes);
+for neuron = 1:neurons
+    figure; hold on;
+    spikes = Data.spikes{1, neuron};
+    stimuli = Data.stimuli{1, neuron}(:, 3); 
+    unique_conds = unique(stimuli);
+    colors = hsv(length(unique_conds)); 
+    row = 1;
+    
+    for cond = 1:length(unique_conds)
+        dir = unique_conds(cond);
+        trial_idx = find(stimuli == dir);
+        legend_handles(cond) = plot(nan, nan, 'Color', colors(cond,:), 'LineWidth', 2);
+        for t = 1:length(trial_idx)
+            trial_spikes = spikes{trial_idx(t)};
+            for s = 1:length(trial_spikes)
+                plot([trial_spikes(s) trial_spikes(s)], [row-0.4 row+0.4], 'Color', colors(cond,:), 'LineWidth', 1);
+            end
+            row = row + 1;
+        end
+    end
+    xlabel('Time (s)');
+    ylabel('Trial number per condition');
+    title(['Neuron ' num2str(neuron) ' Raster Plot']);
+    
+    legend_labels = arrayfun(@(cond) sprintf('%d°', cond), unique_conds, 'UniformOutput', false);
+    legend(legend_handles, legend_labels, 'Location', 'best');
+end
+
+%% Part C
