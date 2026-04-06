@@ -1,0 +1,16 @@
+%% Part A
+neurons = length(Data.spikes);
+for neuron = 1:length(neurons)
+    trial_mask = Data.stimuli{1, neuron}(:, 2) == 700;
+    spikes = Data.spikes{1, neuron}(trial_mask);
+    stimuli = Data.stimuli{1, neuron}(trial_mask, 3);
+    unique_dirs = unique(stimuli);
+    mean_counts{neuron} = zeros(length(unique_dirs), 1);
+    
+    for cond = 1:length(unique_conds)
+        cond_mask = stimuli == unique_conds(cond);
+        spikes_per_cond = spikes(cond_mask);
+        counts = cellfun(@length, spikes_per_cond);
+        mean_counts{neuron}(d) = mean(counts);
+    end
+end
