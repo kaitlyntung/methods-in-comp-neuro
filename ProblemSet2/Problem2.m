@@ -28,4 +28,4 @@ for neuron = 1:3
 end
 
 %% 2.2 Nearest-Neighbor Plots
-% Part B
+% Part A
