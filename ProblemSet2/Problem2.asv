@@ -1,0 +1,36 @@
+%% 2.1 Visualization: scatter plots
+% Part A
+colors = {'b', 'r', 'k'};
+titles = {'Type 1', 'Type 2', 'Neuron Type 3'};
+
+for neuron = 1:3
+    
+    figure;
+    
+    location = data(neuron).locsXY; % Nx2 matrix [x y]
+    
+    % Plot neuron locations
+    plot(location(:,1), location(:,2), 'o', ...
+        'MarkerEdgeColor', colors{neuron}, ...
+        'MarkerFaceColor', colors{neuron}, ...
+        'MarkerSize', 6);
+    
+    hold on;
+    
+    % Compute field of view boundaries
+    xmin = min(location(:,1));
+    xmax = max(location(:,1));
+    ymin = min(location(:,2));
+    ymax = max(location(:,2));
+    
+    % Draw rectangular boundary
+    rectangle('Position', [xmin, ymin, xmax-xmin, ymax-ymin], ...
+              'EdgeColor', 'k', 'LineWidth', 2);
+    
+    % Formatting
+    axis equal;
+    xlabel('X position');
+    ylabel('Y position');
+    title([titles{neuron} ' Locations in Field of View']);
+    
+end
