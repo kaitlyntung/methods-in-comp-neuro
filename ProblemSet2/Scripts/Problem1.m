@@ -89,7 +89,6 @@ for neuron = 1:neurons
     stimuli = Data.stimuli{1, neuron}(trial_mask, 3);
     unique_conds = unique(stimuli);
     
-    % Compute mean firing to find preferred direction
     mean_rates = zeros(size(unique_conds));
     
     for cond = 1:length(unique_conds)
@@ -115,35 +114,38 @@ for neuron = 1:neurons
         
         [~,~,~,AUC] = perfcurve(labels, scores, 1);
         
-        % Angular difference
         diff = abs(pref_dir - test_dir);
         diff = min(diff, 360 - diff);
         
         auroc_vals(end+1) = AUC;
         angle_diffs(end+1) = diff;
     end
-    
-    % Sort for plotting
-    [angle_diffs, sort_idx] = sort(angle_diffs);
-    auroc_vals = auroc_vals(sort_idx);
-    
+
+    [unique_diffs, ~, idx_groups] = unique(angle_diffs);
+    mean_auroc = accumarray(idx_groups, auroc_vals, [], @mean);
+
+    [unique_diffs, sort_idx] = sort(unique_diffs);
+    mean_auroc = mean_auroc(sort_idx);
+
     figure;
-    plot(angle_diffs, auroc_vals, 'r-', 'LineWidth', 2);
+    plot(unique_diffs, mean_auroc, 'r-', 'LineWidth', 2);
+    hold on;
     yline(0.75, 'k--', 'LineWidth', 1);
+    
     xlabel('Angular Difference (deg)');
     ylabel('AUROC');
-    title(['Neuron ' num2str(neuron) ' Neurometric (Direction)']);    
+    title(['Neuron ' num2str(neuron) ' Neurometric Plot (Direction)']);   
+    ylim([0.5 1]);
 end
 
 %% Part E
 for neuron = 1:neurons
-    spikes = Data.spikes{1, neuron};
-    directions = Data.stimuli{1, neuron}(:, 3);
+    trial_mask = Data.stimuli{1, neuron}(:, 2) == 700;
+    spikes = Data.spikes{1, neuron}(trial_mask);
+    directions = Data.stimuli{1, neuron}(trial_mask, 3);
     
     orientations = mod(directions + 90, 180);
     unique_conds = unique(orientations);
-    
-    % Find preferred orientation
     mean_rates = zeros(size(unique_conds));
     
     for cond = 1:length(unique_conds)
@@ -175,16 +177,20 @@ for neuron = 1:neurons
         auroc_vals(end+1) = AUC;
         ori_diffs(end+1) = diff;
     end
-    
-    [ori_diffs, sort_idx] = sort(ori_diffs);
-    auroc_vals = auroc_vals(sort_idx);
+    [unique_diffs, ~, idx_groups] = unique(ori_diffs);
+    mean_auroc = accumarray(idx_groups, auroc_vals, [], @mean);
+
+    [unique_diffs, sort_idx] = sort(unique_diffs);
+    mean_auroc = mean_auroc(sort_idx);
     
     figure;
-    plot(ori_diffs, auroc_vals, 'r-', 'LineWidth', 2);
+    plot(unique_diffs, mean_auroc, 'r-', 'LineWidth', 2);
+    hold on;
     yline(0.75, 'k--', 'LineWidth', 1);
+    
     xlabel('Orientation Difference (deg)');
     ylabel('AUROC');
-    title(['Neuron ' num2str(neuron) ' Neurometric (Orientation)']);
+    title(['Neuron ' num2str(neuron) ' Neurometric Plot (Orientation)']);
     ylim([0.5 1]);
-    
+
 end
