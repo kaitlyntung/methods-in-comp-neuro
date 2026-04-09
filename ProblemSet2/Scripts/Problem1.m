@@ -16,7 +16,6 @@ for neuron = 1:neurons
 end
 
 %% Part B
-neurons = length(Data.spikes);
 for neuron = 1:neurons
     trial_mask = Data.stimuli{1, neuron}(:, 2) == 700;
     figure; hold on;
@@ -47,7 +46,6 @@ for neuron = 1:neurons
 end
 
 %% Part C
-neurons = length(Data.spikes);
 for neuron = 1:neurons
     trial_mask = Data.stimuli{1, neuron}(:, 2) == 700;
     spikes = Data.spikes{1, neuron}(trial_mask);
@@ -69,22 +67,22 @@ for neuron = 1:neurons
     theta_closed = [theta; theta(1)];
     mean_closed = [mean_rates; mean_rates(1)];
     sem_closed = [sem_rates; sem_rates(1)];
+
+    upper = mean_rates + sem_rates;
+    lower = mean_rates - sem_rates;
+    upper_closed = [upper; upper(1)];
+    lower_closed = [lower; lower(1)];
     
     figure;
     polarplot(theta_closed, mean_closed, 'r-', 'LineWidth', 2);
     hold on;
+    polarplot(theta_closed, upper_closed, 'k-', 'LineWidth', 1);
+    polarplot(theta_closed, lower_closed, 'k-', 'LineWidth', 1);
     
-    for cond = 1:length(theta_closed)
-        polarplot([theta_closed(cond) theta_closed(cond)], ...
-                  [mean_closed(cond)-sem_closed(cond), mean_closed(cond)+sem_closed(cond)], ...
-                  'k', 'LineWidth', 1);
-    end
     title(['Neuron ' num2str(neuron) ' Polar Plot']);
 end
 
 %% Part D
-neurons = length(Data.spikes);
-
 for neuron = 1:neurons
     trial_mask = Data.stimuli{1, neuron}(:, 2) == 700;
     spikes = Data.spikes{1, neuron}(trial_mask);
@@ -139,7 +137,6 @@ end
 
 %% Part E
 for neuron = 1:neurons
-    
     spikes = Data.spikes{1, neuron};
     directions = Data.stimuli{1, neuron}(:, 3);
     
