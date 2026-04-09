@@ -13,7 +13,6 @@ for neuron = 1:3
         'MarkerSize', 4);
     hold on;
     
-    % Use actual field of view
     fov = data(neuron).fovSizeXY;
     rectangle('Position', [0, 0, fov(1), fov(2)], ...
               'EdgeColor', 'k', 'LineWidth', 2);
@@ -30,11 +29,8 @@ end
 %% 2.2 Nearest-Neighbor Plots
 % Part A
 function nnDist = nearestNeighborDistances(locsXY)
-    % Compute pairwise distances
     D = pdist2(locsXY, locsXY);
-    % Set diagonal (distance to itself) to infinity
     D(1:size(D,1)+1:end) = inf;
-    % Find nearest neighbor distance for each neuron
     nnDist = min(D, [], 2);
 end
 
@@ -56,33 +52,24 @@ for i = 1:3
     
     histogram(nnDists{i}, edges, 'FaceColor', colors{i});
     hold on;
-    
-    % Plot median as red X
     plot(medians(i), 0, 'rx', 'MarkerSize', 12, 'LineWidth', 2);
-    
     xlabel('Nearest Neighbor Distance');
     ylabel('Count');
-    title(['Neuron Type ' num2str(i) ' NN Distance Histogram']);
-    
+    title(['Neuron Type ' num2str(i) ' Histogram']);
     xlim([edges(1) edges(end)]);
 end
 
-% Part B
 for i = 1:3
     locs = data(i).locsXY;
-    % Distance matrix
     D = pdist2(locs, locs);
     D(1:size(D,1)+1:end) = inf;
-    % Find nearest neighbor indices
     [~, nnIdx] = min(D, [], 2);
 
     figure;
     hold on;
-    % Plot neurons
     plot(locs(:,1), locs(:,2), 'o', ...
         'MarkerFaceColor', colors{i}, ...
         'MarkerEdgeColor', colors{i});
-    % Draw lines to nearest neighbors
     for j = 1:size(locs,1)
         x = [locs(j,1), locs(nnIdx(j),1)];
         y = [locs(j,2), locs(nnIdx(j),2)];
@@ -90,7 +77,6 @@ for i = 1:3
         plot(x, y, colors{i});
     end
     
-    % Plot field of view boundary
     fov = data(i).fovSizeXY;
     rectangle('Position', [0 0 fov(1) fov(2)], 'EdgeColor', 'k');
     axis equal;
@@ -100,8 +86,6 @@ end
 %% Part 2.3: Testing for Clustery-ness
 % Part A
 function locs = generateRandomLocs(n, fov)
-    % n = number of neurons
-    % fov = [width, height]
     x = rand(n,1) * fov(1);
     y = rand(n,1) * fov(2);
     locs = [x y];
