@@ -1,36 +1,100 @@
 %% 2.1 Visualization: scatter plots
 % Part A
 colors = {'b', 'r', 'k'};
-titles = {'Type 1', 'Type 2', 'Neuron Type 3'};
+titles = {'Type 1', 'Type 2', 'Type 3'};
 
 for neuron = 1:3
-    
     figure;
+    location = data(neuron).locsXY;
     
-    location = data(neuron).locsXY; % Nx2 matrix [x y]
-    
-    % Plot neuron locations
     plot(location(:,1), location(:,2), 'o', ...
         'MarkerEdgeColor', colors{neuron}, ...
         'MarkerFaceColor', colors{neuron}, ...
-        'MarkerSize', 6);
-    
+        'MarkerSize', 4);
     hold on;
     
-    % Compute field of view boundaries
-    xmin = min(location(:,1));
-    xmax = max(location(:,1));
-    ymin = min(location(:,2));
-    ymax = max(location(:,2));
-    
-    % Draw rectangular boundary
-    rectangle('Position', [xmin, ymin, xmax-xmin, ymax-ymin], ...
+    % Use actual field of view
+    fov = data(neuron).fovSizeXY;
+    rectangle('Position', [0, 0, fov(1), fov(2)], ...
               'EdgeColor', 'k', 'LineWidth', 2);
     
-    % Formatting
     axis equal;
+    xlim([0 fov(1)]);
+    ylim([0 fov(2)]);
+    
     xlabel('X position');
     ylabel('Y position');
-    title([titles{neuron} ' Locations in Field of View']);
-    
+    title([titles{neuron} ' Scatter Plot']);
 end
+
+%% 2.2 Nearest-Neighbor Plots
+% Part A
+function nnDist = nearestNeighborDistances(locsXY)
+    % Compute pairwise distances
+    D = pdist2(locsXY, locsXY);
+    % Set diagonal (distance to itself) to infinity
+    D(1:size(D,1)+1:end) = inf;
+    % Find nearest neighbor distance for each neuron
+    nnDist = min(D, [], 2);
+end
+
+nnDists = cell(1,3);
+medians = zeros(1,3);
+
+for i = 1:3
+    locs = data(i).locsXY;
+    
+    nnDists{i} = nearestNeighborDistances(locs);
+    medians(i) = median(nnDists{i});
+end
+allDists = vertcat(nnDists{:});
+edges = linspace(0, max(allDists), 30);
+colors = {'b','r','k'};
+
+for i = 1:3
+    figure;
+    
+    histogram(nnDists{i}, edges, 'FaceColor', colors{i});
+    hold on;
+    
+    % Plot median as red X
+    plot(medians(i), 0, 'rx', 'MarkerSize', 12, 'LineWidth', 2);
+    
+    xlabel('Nearest Neighbor Distance');
+    ylabel('Count');
+    title(['Neuron Type ' num2str(i) ' NN Distance Histogram']);
+    
+    xlim([edges(1) edges(end)]);
+end
+
+% Part B
+for i = 1:3
+    locs = data(i).locsXY;
+    % Distance matrix
+    D = pdist2(locs, locs);
+    D(1:size(D,1)+1:end) = inf;
+    % Find nearest neighbor indices
+    [~, nnIdx] = min(D, [], 2);
+
+    figure;
+    hold on;
+    % Plot neurons
+    plot(locs(:,1), locs(:,2), 'o', ...
+        'MarkerFaceColor', colors{i}, ...
+        'MarkerEdgeColor', colors{i});
+    % Draw lines to nearest neighbors
+    for j = 1:size(locs,1)
+        x = [locs(j,1), locs(nnIdx(j),1)];
+        y = [locs(j,2), locs(nnIdx(j),2)];
+        
+        plot(x, y, colors{i});
+    end
+    
+    % Plot field of view boundary
+    fov = data(i).fovSizeXY;
+    rectangle('Position', [0 0 fov(1) fov(2)], 'EdgeColor', 'k');
+    axis equal;
+    title(['Neuron Type ' num2str(i) ' with Nearest Neighbors']);
+end
+
+%% Part 2.3: Testi
