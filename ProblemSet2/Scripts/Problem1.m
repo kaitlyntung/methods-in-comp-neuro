@@ -18,9 +18,10 @@ end
 %% Part B
 neurons = length(Data.spikes);
 for neuron = 1:neurons
+    trial_mask = Data.stimuli{1, neuron}(:, 2) == 700;
     figure; hold on;
-    spikes = Data.spikes{1, neuron};
-    stimuli = Data.stimuli{1, neuron}(:, 3); 
+    spikes = Data.spikes{1, neuron}(trial_mask);
+    stimuli = Data.stimuli{1, neuron}(trial_mask, 3);
     unique_conds = unique(stimuli);
     colors = hsv(length(unique_conds)); 
     row = 1;
@@ -48,8 +49,9 @@ end
 %% Part C
 neurons = length(Data.spikes);
 for neuron = 1:neurons
-    spikes = Data.spikes{1, neuron};
-    stimuli = Data.stimuli{1, neuron}(:, 3); 
+    trial_mask = Data.stimuli{1, neuron}(:, 2) == 700;
+    spikes = Data.spikes{1, neuron}(trial_mask);
+    stimuli = Data.stimuli{1, neuron}(trial_mask, 3);
     unique_conds = unique(stimuli);
     
     mean_rates = zeros(size(unique_conds));
@@ -63,27 +65,30 @@ for neuron = 1:neurons
         sem_rates(cond) = std(spike_counts) / sqrt(length(spike_counts));
     end
     
-    theta = deg2rad(unique_conds); %radians needed for polar plot
+    theta = deg2rad(unique_conds);
+    theta_closed = [theta; theta(1)];
+    mean_closed = [mean_rates; mean_rates(1)];
+    sem_closed = [sem_rates; sem_rates(1)];
+    
     figure;
-    polarplot(theta, mean_rates, 'r-', 'LineWidth', 2);
+    polarplot(theta_closed, mean_closed, 'r-', 'LineWidth', 2);
     hold on;
     
-    for cond = 1:length(theta)
-        polarplot([theta(cond) theta(cond)], ...
-                  [mean_rates(cond)-sem_rates(cond), mean_rates(cond)+sem_rates(cond)], ...
+    for cond = 1:length(theta_closed)
+        polarplot([theta_closed(cond) theta_closed(cond)], ...
+                  [mean_closed(cond)-sem_closed(cond), mean_closed(cond)+sem_closed(cond)], ...
                   'k', 'LineWidth', 1);
     end
     title(['Neuron ' num2str(neuron) ' Polar Plot']);
-    
 end
 
 %% Part D
 neurons = length(Data.spikes);
 
 for neuron = 1:neurons
-    spikes = Data.spikes{1, neuron};
-    stimuli = Data.stimuli{1, neuron}(:, 3);
-    
+    trial_mask = Data.stimuli{1, neuron}(:, 2) == 700;
+    spikes = Data.spikes{1, neuron}(trial_mask);
+    stimuli = Data.stimuli{1, neuron}(trial_mask, 3);
     unique_conds = unique(stimuli);
     
     % Compute mean firing to find preferred direction
@@ -126,21 +131,19 @@ for neuron = 1:neurons
     
     figure;
     plot(angle_diffs, auroc_vals, 'r-', 'LineWidth', 2);
+    yline(0.75, 'k--', 'LineWidth', 1);
     xlabel('Angular Difference (deg)');
     ylabel('AUROC');
-    title(['Neuron ' num2str(neuron) ' Neurometric (Direction)']);
-    ylim([0.5 1]);
-    
+    title(['Neuron ' num2str(neuron) ' Neurometric (Direction)']);    
 end
 
 %% Part E
-
 for neuron = 1:neurons
     
     spikes = Data.spikes{1, neuron};
     directions = Data.stimuli{1, neuron}(:, 3);
     
-    orientations = mod(directions, 180);
+    orientations = mod(directions + 90, 180);
     unique_conds = unique(orientations);
     
     % Find preferred orientation
@@ -181,6 +184,7 @@ for neuron = 1:neurons
     
     figure;
     plot(ori_diffs, auroc_vals, 'r-', 'LineWidth', 2);
+    yline(0.75, 'k--', 'LineWidth', 1);
     xlabel('Orientation Difference (deg)');
     ylabel('AUROC');
     title(['Neuron ' num2str(neuron) ' Neurometric (Orientation)']);
