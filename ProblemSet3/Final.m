@@ -1,6 +1,7 @@
 %% Problem 1
 colors = hsv(13);
 figure; hold on;
+trial_offset = 1;
 
 for direction = 1:13
     for trial = 1:184
@@ -41,7 +42,7 @@ for fi = 1:num_fracs
         count_vals = 0:max_n;
         num_vals = length(count_vals);
 
-        % P(n|theta) eq2 numerator
+        % P(n|theta)
         Pn_given_theta = zeros(num_directions, num_vals);
         for d = 1:num_directions
             for ni = 1:num_vals
@@ -51,16 +52,15 @@ for fi = 1:num_fracs
         % P(n) = (1/num_directions) * sum_theta P(n|theta) eq2
         Pn = mean(Pn_given_theta, 1);
         
-        % ── Mutual information  I = sum_n P(n) log2[ P(n|theta) / P(n) ]
-        % Equivalently: I = H(n) - <H(n|theta)>_theta  (Eqs. 1 & 5–6)
-        % Computed as weighted average over directions of KL divergences
-
+        % I = sum_n P(n) log2[ P(n|theta) / P(n)]
+        % = I = H(n) - <H(n|theta)>_theta eq1, eq5, eq6
         MI = 0;
         P_theta = 1 / num_directions;   % uniform prior
 
         for d = 1:num_directions
-            Pn_d = Pn_given_theta(d, :);    % P(n | theta_d)
-            % Sum only where both Pn_d > 0 and Pn > 0 (avoid log(0))
+            % P(n | theta_d)
+            Pn_d = Pn_given_theta(d, :);    
+            % don't sum log(0)
             mask = Pn_d > 0 & Pn > 0;
             MI = MI + P_theta * sum( Pn_d(mask) .* log2( Pn_d(mask) ./ Pn(mask) ) );
         end
@@ -93,3 +93,6 @@ title('Mutual information between cumulative spike count and motion direction');
 xlim([0 512]);
 ylim([0 max(MI_corrected)*1.15]);
 xline(256, '--', 'Stimulus offset', 'LabelVerticalAlignment','bottom');
+
+%% Problem 3
+
