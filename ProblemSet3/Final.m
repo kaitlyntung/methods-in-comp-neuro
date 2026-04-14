@@ -23,6 +23,17 @@ ylabel('Trial Number');
 title('Raster Plot');
 
 %% Problem 2
+% For each fraction of trials:
+%   For each timepoint t:
+%     Get cumulative spike counts up to t, for all directions/trials
+%     Estimate P(n|θ) by histogram
+%     Compute P(n) by averaging
+%     Compute raw MI via the KL-divergence sum
+% 
+% Then for each timepoint:
+%   Fit line to MI_raw vs 1/N across the 5 fractions
+%   Y-intercept = bias-corrected MI
+
 cumulative_spikes = cumsum(mtNeuron.data, 1);
 num_directions = size(mtNeuron.data, 2);
 num_trials = size(mtNeuron.data, 3);
@@ -87,7 +98,6 @@ end
 
 MI_corrected = max(MI_corrected, 0);   % information can't be negative
 
-% ── Time axis: 2 ms bins, referenced to stimulus onset ─────────────────────
 time_ms = (0:num_time-1) * 2;   % 0 to 510 ms
 
 % ── Plot ───────────────────────────────────────────────────────────────────
@@ -101,4 +111,159 @@ ylim([0 max(MI_corrected)*1.15]);
 xline(256, '--', 'Stimulus offset', 'LabelVerticalAlignment','bottom');
 
 %% Problem 3
+n_boot = 100;                          % number of bootstrap iterations
+MI_boot = zeros(num_time, n_boot);
 
+for b = 1:n_boot
+    % Resample trial indices with replacement for each direction
+    % This is the key step: resample WITHIN each direction separately
+    % (preserves the direction structure — we're not shuffling labels)
+    boot_spikes = zeros(num_time, num_directions, num_trials);
+    for d = 1:num_directions
+        idx = randi(num_trials, 1, num_trials);   % resample with replacement
+        boot_spikes(:, d, :) = cumulative_spikes(:, d, idx);
+    end
+
+    MI_raw_boot = zeros(num_time, num_fracs);
+
+    for fi = 1:num_fracs
+        n_samp = floor(fractions(fi) * num_trials);
+
+        for t = 1:num_time
+            counts = zeros(num_directions, n_samp);
+            for d = 1:num_directions
+                idx = randperm(num_trials, n_samp);
+                counts(d, :) = boot_spikes(t, d, idx);
+            end
+
+            all_counts = counts(:);
+            max_n = max(all_counts);
+            count_vals = 0:max_n;
+            num_vals = length(count_vals);
+
+            Pn_given_theta = zeros(num_directions, num_vals);
+            for d = 1:num_directions
+                for ni = 1:num_vals
+                    Pn_given_theta(d, ni) = mean(counts(d, :) == count_vals(ni));
+                end
+            end
+
+            Pn = mean(Pn_given_theta, 1);
+            MI = 0;
+            P_theta = 1 / num_directions;
+            for d = 1:num_directions
+                Pn_d = Pn_given_theta(d, :);
+                mask = Pn_d > 0 & Pn > 0;
+                MI = MI + P_theta * sum(Pn_d(mask) .* log2(Pn_d(mask) ./ Pn(mask)));
+            end
+            MI_raw_boot(t, fi) = MI;
+        end
+    end
+
+    % Bias correction for this bootstrap replicate
+    for t = 1:num_time
+        p = polyfit(inv_fracs, MI_raw_boot(t, :), 1);
+        MI_boot(t, b) = p(2);
+    end
+    MI_boot(:, b) = max(MI_boot(:, b), 0);
+
+    fprintf('Bootstrap iteration %d/%d done\n', b, n_boot);
+end
+
+% Percentile-based confidence interval
+MI_low  = prctile(MI_boot, 2.5,  2);   % 2.5th percentile across boots
+MI_high = prctile(MI_boot, 97.5, 2);   % 97.5th percentile
+
+%% Plotting
+figure;
+fill([time_ms, fliplr(time_ms)], ...
+     [MI_low', fliplr(MI_high')], ...
+     [0.7 0.7 0.7], 'EdgeColor', 'none', 'FaceAlpha', 0.5);
+hold on;
+plot(time_ms, MI_corrected, 'k-', 'LineWidth', 1.5);
+xline(256, 'k--', 'Stimulus offset', 'LabelVerticalAlignment', 'bottom');
+xlabel('Time from stimulus onset (ms)');
+ylabel('Mutual information (bits)');
+title('MI between cumulative spike count and motion direction ± 95% CI');
+xlim([0 512]);
+ylim([0 max(MI_high)*1.15]);
+legend('95% CI', 'Bias-corrected MI', 'Location', 'northwest');
+
+%% Problem 4 — Latency detection and MI fractions
+
+% ── Method: baseline threshold ──────────────────────────────────────────────
+% We define latency as the first time bin at which the bias-corrected MI
+% exceeds the pre-stimulus mean + 2 SD of the pre-stimulus MI.
+% The pre-stimulus period is t < 0, i.e. bins before stimulus onset (t=0).
+% Using the data's own noise floor is principled: it adapts to this neuron's
+% variability rather than relying on an arbitrary absolute threshold.
+%
+% The stimulus begins at t=0 (bin 1). Since recordings start at t=0 and
+% the array has no negative-time baseline, we use the first ~50ms (bins 1-25)
+% as a proxy pre-stimulus period — before the neuron could plausibly respond
+% (given typical MT latencies of ~50-80ms). We require the threshold to be
+% exceeded for at least 3 consecutive bins to avoid single-bin noise spikes.
+
+% ── Define proxy pre-stimulus window ────────────────────────────────────────
+pre_bins    = 1:25;          % 0–50 ms: before any plausible neural response
+baseline_mu = mean(MI_corrected(pre_bins));
+baseline_sd = std(MI_corrected(pre_bins));
+threshold   = baseline_mu + 2 * baseline_sd;
+
+% ── Find first sustained crossing ───────────────────────────────────────────
+n_consec = 3;   % require 3 consecutive bins above threshold (~6 ms)
+above    = MI_corrected > threshold;
+latency_bin = NaN;
+for t = 1:(num_time - n_consec + 1)
+    if all(above(t:t+n_consec-1))
+        latency_bin = t;
+        break;
+    end
+end
+latency_ms = (latency_bin - 1) * 2;   % convert bin → ms
+fprintf('Estimated latency: %d ms (bin %d)\n', latency_ms, latency_bin);
+
+% ── MI fractions ─────────────────────────────────────────────────────────────
+% "Within the first X ms of the neural response" means X ms after latency,
+% not after stimulus onset.
+
+total_MI = MI_corrected(end);   % final (asymptotic) value
+
+% 50 ms after latency
+bin_50  = latency_bin + round(50  / 2);   % 50ms / 2ms per bin
+bin_100 = latency_bin + round(100 / 2);   % 100ms / 2ms per bin
+bin_50  = min(bin_50,  num_time);
+bin_100 = min(bin_100, num_time);
+
+MI_at_50  = MI_corrected(bin_50);
+MI_at_100 = MI_corrected(bin_100);
+
+frac_50  = MI_at_50  / total_MI;
+frac_100 = MI_at_100 / total_MI;
+
+fprintf('MI at 50ms after latency:  %.3f bits (%.1f%% of total)\n', MI_at_50,  frac_50*100);
+fprintf('MI at 100ms after latency: %.3f bits (%.1f%% of total)\n', MI_at_100, frac_100*100);
+
+% ── Plot ─────────────────────────────────────────────────────────────────────
+figure;
+fill([time_ms, fliplr(time_ms)], ...
+     [MI_low', fliplr(MI_high')], ...
+     [0.7 0.7 0.7], 'EdgeColor', 'none', 'FaceAlpha', 0.5);
+hold on;
+plot(time_ms, MI_corrected, 'k-', 'LineWidth', 1.5);
+yline(threshold,    'b--', 'Threshold',          'LabelVerticalAlignment','bottom');
+xline(latency_ms,   'r--', sprintf('Latency: %d ms', latency_ms));
+xline(256,          'k--', 'Stimulus offset',    'LabelVerticalAlignment','bottom');
+xline(time_ms(bin_50),  'g--', '+50ms');
+xline(time_ms(bin_100), 'm--', '+100ms');
+
+% Annotate fractions
+text(time_ms(bin_50)+4,  MI_at_50,  sprintf('%.1f%%', frac_50*100),  'Color','g','FontSize',9);
+text(time_ms(bin_100)+4, MI_at_100, sprintf('%.1f%%', frac_100*100), 'Color','m','FontSize',9);
+
+xlabel('Time from stimulus onset (ms)');
+ylabel('Mutual information (bits)');
+title('MI latency and accumulation');
+xlim([0 512]);
+ylim([0 max(MI_high)*1.15]);
+legend('95% CI','Bias-corrected MI','Location','northwest');
