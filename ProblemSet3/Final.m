@@ -1,19 +1,25 @@
 %% Problem 1
-colors = hsv(13);
-figure; hold on;
-trial_offset = 1;
+numTimes = size(mtNeuron.data, 1);     
+numDirections = size(mtNeuron.data, 2);  
+numTrials = size(mtNeuron.data, 3);  
 
-for direction = 1:13
-    for trial = 1:184
-        spikes = find(mtNeuron.data(:,direction,trial));
-        y = trial_offset + trial * ones(size(spikes));
-        plot(spikes*2, y, '.', 'Color', colors(direction,:));
+colors = hsv(numDirections);
+figure;
+hold on;
+
+trial_offset = 0;
+for direction = 1:numDirections
+    for trial = 1:numTrials
+        % convert to ms
+        spikes = find(mtNeuron.data(:, direction, trial)) * 2;  
+        y = (trial_offset + trial) * ones(size(spikes));
+        plot(spikes, y, '|', 'Color', colors(direction, :), 'MarkerSize', 4);
     end
-    trial_offset = trial_offset + 184;
+    trial_offset = trial_offset + numTrials;
 end
 
 xlabel('Time (ms)');
-ylabel('Trial');
+ylabel('Trial Number');
 title('Raster Plot');
 
 %% Problem 2
