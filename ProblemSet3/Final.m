@@ -1,39 +1,35 @@
 %% Problem 1
-numTimes = size(mtNeuron.data, 1);     
-numDirections = size(mtNeuron.data, 2);  
-numTrials = size(mtNeuron.data, 3);  
+numTimes = size(mtNeuron.data, 1);
+numDirections = size(mtNeuron.data, 2);
+numTrials = size(mtNeuron.data, 3);
 
 colors = hsv(numDirections);
-figure;
-hold on;
+directions = linspace(-90, 90, numDirections);
 
+figure; hold on;
 trial_offset = 0;
+legend_handles = gobjects(numDirections,1);
+
 for direction = 1:numDirections
     for trial = 1:numTrials
         % convert to ms
-        spikes = find(mtNeuron.data(:, direction, trial)) * 2;  
+        spikes = find(mtNeuron.data(:, direction, trial)) * 2;
         y = (trial_offset + trial) * ones(size(spikes));
-        plot(spikes, y, '|', 'Color', colors(direction, :), 'MarkerSize', 4);
+
+        plot(spikes, y, '.', 'Color', colors(direction, :), 'MarkerSize', 1);
     end
+    
+    legend_handles(direction) = plot(nan, nan, '.', ...
+        'Color', colors(direction, :), 'MarkerSize', 10);
+    
     trial_offset = trial_offset + numTrials;
 end
 
 xlabel('Time (ms)');
 ylabel('Trial Number');
 title('Raster Plot');
-
+legend(legend_handles, string(directions) + "°", 'Location', 'eastoutside');
 %% Problem 2
-% For each fraction of trials:
-%   For each timepoint t:
-%     Get cumulative spike counts up to t, for all directions/trials
-%     Estimate P(n|θ) by histogram
-%     Compute P(n) by averaging
-%     Compute raw MI via the KL-divergence sum
-% 
-% Then for each timepoint:
-%   Fit line to MI_raw vs 1/N across the 5 fractions
-%   Y-intercept = bias-corrected MI
-
 cumulative_spikes = cumsum(mtNeuron.data, 1);
 num_directions = size(mtNeuron.data, 2);
 num_trials = size(mtNeuron.data, 3);
@@ -59,68 +55,54 @@ for fi = 1:num_fracs
         count_vals = 0:max_n;
         num_vals = length(count_vals);
 
-        % P(n|theta)
+        % P(n|theta) based on histogram
         Pn_given_theta = zeros(num_directions, num_vals);
         for d = 1:num_directions
             for ni = 1:num_vals
                 Pn_given_theta(d, ni) = mean(counts(d, :) == count_vals(ni));
             end
         end
-        % P(n) = (1/num_directions) * sum_theta P(n|theta) eq2
+        % P(n) = (1/num_directions) * sum_theta P(n|theta) eq2, avg
         Pn = mean(Pn_given_theta, 1);
-        
-        % I = sum_n P(n) log2[ P(n|theta) / P(n)]
-        % = I = H(n) - <H(n|theta)>_theta eq1, eq5, eq6
         MI = 0;
-        P_theta = 1 / num_directions;   % uniform prior
+        P_theta = 1 / num_directions; 
 
         for d = 1:num_directions
             % P(n | theta_d)
             Pn_d = Pn_given_theta(d, :);    
-            % don't sum log(0)
             mask = Pn_d > 0 & Pn > 0;
-            MI = MI + P_theta * sum( Pn_d(mask) .* log2( Pn_d(mask) ./ Pn(mask) ) );
+            MI = MI + P_theta * sum( Pn_d(mask) .* log2( Pn_d(mask) ./ Pn(mask)) );
         end
 
         MI_raw(t, fi) = MI;
     end
 end
-
-% ── Bias correction via linear extrapolation  (Eq. 7 in paper) ────────────
-% I_est(N) = I_true + a/N  =>  plot I_raw vs 1/N and take y-intercept
 MI_corrected = zeros(num_time, 1);
-inv_fracs    = 1 ./ fractions;           % x-axis: 1/fraction (proxy for 1/N)
+inv_fracs    = 1 ./ fractions;
 
 for t = 1:num_time
-    p = polyfit(inv_fracs, MI_raw(t, :), 1);   % linear fit
-    MI_corrected(t) = p(2);                     % y-intercept = I_true
+    p = polyfit(inv_fracs, MI_raw(t, :), 1);  
+    MI_corrected(t) = p(2); % y-intercept = I_true
 end
 
-MI_corrected = max(MI_corrected, 0);   % information can't be negative
+MI_corrected = max(MI_corrected, 0);
+time_ms = (0:num_time-1) * 2;
 
-time_ms = (0:num_time-1) * 2;   % 0 to 510 ms
-
-% ── Plot ───────────────────────────────────────────────────────────────────
 figure;
 plot(time_ms, MI_corrected, 'k-', 'LineWidth', 1.5);
-xlabel('Time from stimulus onset (ms)');
-ylabel('Mutual information (bits)');
-title('Mutual information between cumulative spike count and motion direction');
+xlabel('Time (ms)');
+ylabel('MI (bits)');
+title('Mutual Information');
 xlim([0 512]);
-ylim([0 max(MI_corrected)*1.15]);
-xline(256, '--', 'Stimulus offset', 'LabelVerticalAlignment','bottom');
 
 %% Problem 3
-n_boot = 100;                          % number of bootstrap iterations
+n_boot = 1000;                        
 MI_boot = zeros(num_time, n_boot);
 
 for b = 1:n_boot
-    % Resample trial indices with replacement for each direction
-    % This is the key step: resample WITHIN each direction separately
-    % (preserves the direction structure — we're not shuffling labels)
     boot_spikes = zeros(num_time, num_directions, num_trials);
     for d = 1:num_directions
-        idx = randi(num_trials, 1, num_trials);   % resample with replacement
+        idx = randi(num_trials, 1, num_trials);
         boot_spikes(:, d, :) = cumulative_spikes(:, d, idx);
     end
 
@@ -166,8 +148,6 @@ for b = 1:n_boot
         MI_boot(t, b) = p(2);
     end
     MI_boot(:, b) = max(MI_boot(:, b), 0);
-
-    fprintf('Bootstrap iteration %d/%d done\n', b, n_boot);
 end
 
 % Percentile-based confidence interval
@@ -178,16 +158,14 @@ MI_high = prctile(MI_boot, 97.5, 2);   % 97.5th percentile
 figure;
 fill([time_ms, fliplr(time_ms)], ...
      [MI_low', fliplr(MI_high')], ...
-     [0.7 0.7 0.7], 'EdgeColor', 'none', 'FaceAlpha', 0.5);
+     [0 0 0], 'EdgeColor', 'none', 'FaceAlpha', 0.5);
 hold on;
 plot(time_ms, MI_corrected, 'k-', 'LineWidth', 1.5);
-xline(256, 'k--', 'Stimulus offset', 'LabelVerticalAlignment', 'bottom');
-xlabel('Time from stimulus onset (ms)');
-ylabel('Mutual information (bits)');
-title('MI between cumulative spike count and motion direction ± 95% CI');
+xlabel('Time (ms)');
+ylabel('MI (bits)');
+title('Mutual Information with Bootstrap');
 xlim([0 512]);
-ylim([0 max(MI_high)*1.15]);
-legend('95% CI', 'Bias-corrected MI', 'Location', 'northwest');
+legend('95% Bootstrapped Confidence Interval', 'Mutual Information', 'Location', 'best');
 
 %% Problem 4 — Latency detection and MI fractions
 
@@ -248,12 +226,11 @@ fprintf('MI at 100ms after latency: %.3f bits (%.1f%% of total)\n', MI_at_100, f
 figure;
 fill([time_ms, fliplr(time_ms)], ...
      [MI_low', fliplr(MI_high')], ...
-     [0.7 0.7 0.7], 'EdgeColor', 'none', 'FaceAlpha', 0.5);
+     [0 0 0], 'EdgeColor', 'none', 'FaceAlpha', 0.5);
 hold on;
 plot(time_ms, MI_corrected, 'k-', 'LineWidth', 1.5);
 yline(threshold,    'b--', 'Threshold',          'LabelVerticalAlignment','bottom');
 xline(latency_ms,   'r--', sprintf('Latency: %d ms', latency_ms));
-xline(256,          'k--', 'Stimulus offset',    'LabelVerticalAlignment','bottom');
 xline(time_ms(bin_50),  'g--', '+50ms');
 xline(time_ms(bin_100), 'm--', '+100ms');
 
@@ -261,9 +238,8 @@ xline(time_ms(bin_100), 'm--', '+100ms');
 text(time_ms(bin_50)+4,  MI_at_50,  sprintf('%.1f%%', frac_50*100),  'Color','g','FontSize',9);
 text(time_ms(bin_100)+4, MI_at_100, sprintf('%.1f%%', frac_100*100), 'Color','m','FontSize',9);
 
-xlabel('Time from stimulus onset (ms)');
-ylabel('Mutual information (bits)');
-title('MI latency and accumulation');
+xlabel('Time (ms)');
+ylabel('MI (bits)');
+title('Mutual Information with Bootstrap');
 xlim([0 512]);
-ylim([0 max(MI_high)*1.15]);
-legend('95% CI','Bias-corrected MI','Location','northwest');
+legend('95% Bootstrapped Confidence Interval', 'Mutual Information', 'Location', 'best');
