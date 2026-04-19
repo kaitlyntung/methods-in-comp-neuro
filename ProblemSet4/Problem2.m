@@ -1,6 +1,5 @@
 %% Part A
 % predictors X1, outcomes y1
-
 % part i
 cv = cvpartition(length(y1), 'KFold', 5);
 num_folds = cv.NumTestSets;
@@ -13,7 +12,7 @@ for fold = 1:num_folds
     trainInd = training(cv, fold);
     testInd = test(cv, fold);
 
-    Xtrain = X1(trainInd, :);
+    Xtrain = [Xtrain, Xtrain.^2];
     ytrain = y1(trainInd);
     Xtest = X1(testInd, :);
     ytest = y1(testInd);
@@ -41,6 +40,93 @@ for fold = 1:num_folds
     ylabel('Predicted y');
     title(['Fold ' num2str(fold)]);
     
+    error(fold) = mean((ytest - ypred_test).^2);
+end
+
+mean_error = mean(error);
+disp(mean_error);
+mean_train_VAF = mean(VAF_train);
+mean_test_VAF  = mean(VAF_test);
+
+fprintf('\nAverage Train VAF = %.3f\n', mean_train_VAF);
+fprintf('Average Test VAF  = %.3f\n', mean_test_VAF);
+
+%% Part B
+cv = cvpartition(length(y1), 'KFold', 5);
+num_folds = cv.NumTestSets;
+
+error = zeros(num_folds, 1);
+VAF_train = zeros(num_folds, 1);
+VAF_test  = zeros(num_folds, 1);
+
+for fold = 1:num_folds
+    trainInd = training(cv, fold);
+    testInd  = test(cv, fold);
+
+    Xtrain = X1(trainInd, :);
+    ytrain = y1(trainInd);
+    Xtest  = X1(testInd, :);
+    ytest  = y1(testInd);
+
+    Xtrain = [Xtrain, Xtrain.^2];
+    Xtest  = [Xtest,  Xtest.^2];
+
+    Xtrain = [ones(size(Xtrain, 1), 1), Xtrain];
+    Xtest  = [ones(size(Xtest, 1), 1), Xtest];
+
+    b = Xtrain \ ytrain;
+
+    ypred_train = Xtrain * b;
+    ypred_test  = Xtest * b;
+
+    VAF_train(fold) = 1 - sum((ytrain - ypred_train).^2) / sum(ytrain.^2);
+    VAF_test(fold)  = 1 - sum((ytest - ypred_test).^2) / sum(ytest.^2);
+
+    fprintf('Fold %d: Train VAF = %.3f, Test VAF = %.3f\n', ...
+            fold, VAF_train(fold), VAF_test(fold));
+
+    error(fold) = mean((ytest - ypred_test).^2);
+end
+
+mean_error = mean(error);
+mean_train_VAF = mean(VAF_train);
+mean_test_VAF  = mean(VAF_test);
+
+fprintf('\nAverage MSE = %.3f\n', mean_error);
+fprintf('Average Train VAF = %.3f\n', mean_train_VAF);
+fprintf('Average Test VAF  = %.3f\n', mean_test_VAF);
+
+%% Part C
+% predictors X2, outcomes y2
+% part i
+cv = cvpartition(length(y1), 'KFold', 5);
+num_folds = cv.NumTestSets;
+error = zeros(num_folds, 1);
+VAF_train = zeros(num_folds, 1);
+VAF_test  = zeros(num_folds, 1);
+
+for fold = 1:num_folds
+    trainInd = training(cv, fold);
+    testInd = test(cv, fold);
+
+    Xtrain = X2(trainInd, :);
+    ytrain = y2(trainInd);
+    Xtest = X2(testInd, :);
+    ytest = y2(testInd);
+
+    Xtrain = [ones(size(Xtrain, 1), 1), Xtrain];
+    Xtest = [ones(size(Xtest, 1), 1), Xtest];
+
+    b = Xtrain \ ytrain;
+    ypred_test = Xtest * b;
+    ypred_train = Xtrain * b;
+
+    % part iii
+    VAF_train(fold) = 1 - sum((ytrain - ypred_train).^2) / sum(ytrain.^2);
+    VAF_test(fold) = 1 - sum((ytest - ypred_test).^2) / sum(ytest.^2);
+    fprintf('Fold %d: Train VAF = %.3f, Test VAF = %.3f\n', ...
+            fold, VAF_train(fold), VAF_test(fold));
+
     error(fold) = mean((ytest - ypred_test).^2);
 end
 
