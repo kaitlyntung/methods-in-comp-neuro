@@ -22,33 +22,32 @@ for fold = 1:num_folds
     Xtest = [ones(size(Xtest, 1), 1), Xtest];
 
     b = Xtrain \ ytrain;
-    ypred = Xtest * b;
+    ypred_test = Xtest * b;
+    ypred_train = Xtrain * b;
 
     % part iii
-    % Compute VAF (training)
     VAF_train(fold) = 1 - sum((ytrain - ypred_train).^2) / sum(ytrain.^2);
-    
-    % Compute VAF (test)
     VAF_test(fold) = 1 - sum((ytest - ypred_test).^2) / sum(ytest.^2);
-    
-    % Print per fold
     fprintf('Fold %d: Train VAF = %.3f, Test VAF = %.3f\n', ...
             fold, VAF_train(fold), VAF_test(fold));
 
     % part ii
     subplot(2,3,fold);
-    scatter(ytest, ypred, 'filled'); hold on;
-    
-    minVal = min([ytest; ypred]);
-    maxVal = max([ytest; ypred]);
+    scatter(ytest, ypred_test, 'filled'); hold on;
+    minVal = min([ytest; ypred_test]);
+    maxVal = max([ytest; ypred_test]);
     plot([minVal maxVal], [minVal maxVal], 'k-', 'LineWidth', 1.5);
-    
     xlabel('True y');
     ylabel('Predicted y');
     title(['Fold ' num2str(fold)]);
     
-    error(fold) = mean((ytest - ypred).^2);
+    error(fold) = mean((ytest - ypred_test).^2);
 end
 
 mean_error = mean(error);
 disp(mean_error);
+mean_train_VAF = mean(VAF_train);
+mean_test_VAF  = mean(VAF_test);
+
+fprintf('\nAverage Train VAF = %.3f\n', mean_train_VAF);
+fprintf('Average Test VAF  = %.3f\n', mean_test_VAF);
