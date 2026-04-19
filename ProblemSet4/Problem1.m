@@ -19,6 +19,7 @@ title('Neuron 2')
 % dev = model deviance (dev = -2log(theta))
 % stats.se = standard error
 % stats.p = p-values
+disp(stats.p)
 [xgrid, ygrid] = meshgrid(linspace(min(xN), max(xN), 50), ...
                          linspace(min(yN), max(yN), 50));
 
@@ -30,4 +31,27 @@ imagesc(linspace(min(xN), max(xN), 50), ...
 axis xy;
 colorbar;
 title('Estimated Intensity Function');
+xlabel('x'); ylabel('y');
+
+%% Part C
+X = [xN yN xN.^2 yN.^2 xN.*yN];
+
+[b, dev, stats] = glmfit(X, spikes, 'poisson');
+disp(stats.p)
+[xgrid, ygrid] = meshgrid(linspace(min(xN), max(xN), 50), ...
+                         linspace(min(yN), max(yN), 50));
+
+lambda = exp(b(1) + ...
+             b(2)*xgrid + ...
+             b(3)*ygrid + ...
+             b(4)*xgrid.^2 + ...
+             b(5)*ygrid.^2 + ...
+             b(6)*xgrid.*ygrid);
+
+figure;
+imagesc(linspace(min(xN), max(xN), 50), ...
+        linspace(min(yN), max(yN), 50), lambda);
+axis xy;
+colorbar;
+title('Quadratic GLM Intensity');
 xlabel('x'); ylabel('y');
