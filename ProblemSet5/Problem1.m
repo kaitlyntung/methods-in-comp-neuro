@@ -9,6 +9,7 @@ num_pcs = length(variance_normalized);
 fprintf('\n--- Variance Explained ---\n');
 fprintf('PC1 : %5.2f%%\n', explained(1));
 fprintf('PC1 + PC2 : %5.2f%%\n', sum(explained(1:2)));
+fprintf('PC1–PC3 : %5.2f%%\n', sum(explained(1:3)));
 num_pcs_90 = find(cumulative_variance >= 0.9, 1);
 fprintf('PCs for 90%% variance: %d  (cumulative = %.2f%%)\n', num_pcs_90, cumulative_variance(num_pcs_90)*100);
 
