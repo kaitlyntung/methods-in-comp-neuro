@@ -1,0 +1,44 @@
+%% Part 1
+%% Part A
+nConditions = length(R);
+nUnits  = length(R(1).unit);
+startTime = -150;
+endTime = 500;
+binSize = 10;
+bin_edges = (startTime:binSize:endTime);
+nTimeBins = length(bin_edges) - 1; 
+spikeCounts = zeros(nTimeBins, nConditions, nUnits);
+
+for trial = 1:nTrials
+
+%% 3. Bin spikes for every trial x unit
+% Output: nTimeBins x nTrials x nUnits
+spike_counts = zeros(nTimeBins, nTrials, nUnits);
+
+for tr = 1:nTrials
+    move_onset = R(tr).moveOnsetTime;   % ms; subtract to time-lock
+
+    for u = 1:nUnits
+        spk = R(tr).unit(u).spikeTimes;   % spike times in ms
+
+        if isempty(spk)
+            continue
+        end
+
+        % Time-lock: shift so t=0 is movement onset
+        spk_locked = spk - move_onset;
+
+        % histcounts bins spikes into the defined edges
+        % spikes outside [-150, +500] ms are automatically ignored
+        spike_counts(:, tr, u) = histcounts(spk_locked, bin_edges);
+    end
+end
+
+fprintf('spike_counts size: %d x %d x %d\n', size(spike_counts));
+fprintf('Total spikes captured: %d\n', sum(spike_counts(:)));
+
+% Bin centers (useful for plotting later)
+bin_centers = bin_edges(1:end-1) + bin_size/2;   % 1 x 65, in ms
+
+save('spike_counts.mat', 'spike_counts', 'bin_edges', 'bin_centers');
+fprintf('Saved spike_counts.mat\n');
