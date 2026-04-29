@@ -67,7 +67,6 @@ end
 sgtitle('PSTHs locked to movement onset');
 
 %% Part 2
-% Part A
 X = reshape(mean_firing_rate, nTimeBins * nConditions, nUnits);
 
 column_range  = max(X) - min(X);         
@@ -81,68 +80,13 @@ scores = scores(:, 1:nDims);
 
 frac_var = latent / sum(latent); 
 nPlotDims = 20;
-figure;
-bar(1:nPlotDims, frac_var(1:nPlotDims));
-xlabel('PCs')
-ylabel('Variance Explained (Fraction)')
+figurebar(1:nPlotDims, frac_var(1:nPlotDims));
+xlabel('PC dimension');
+ylabel('Fraction of variance explained');
+title('Variance explained per PC (first 20 dimensions)');
+xlim([0 nPlotDims + 1]);
+box off;
 
-% Part B
-figure; 
-for d = 1:nDims
-    subplot(2, 3, d);
- 
-    dim_coeff = coeff(:, d);      
-    [~, sort_idx] = sort(abs(dim_coeff), 'descend');
-    sorted_coeff  = dim_coeff(sort_idx);
- 
-    stem(1:nUnits, sorted_coeff, 'filled');
- 
-    xlabel('Neuron rank');
-    ylabel('Loading');
-    title(sprintf('PC %d', d));
-    xlim([0 nUnits + 1]);
-    yline(0, 'k-', 'LineWidth', 0.5);
-end
- 
-sgtitle('PCA Loadings');
-
-% Part C
-nTrials = size(spike_counts_smooth, 2);
-X_trials = reshape(spike_counts_smooth, nTimeBins * nTrials, nUnits);
-X_trials = X_trials * (1000 / binSize);
-
-X_trials_norm = X_trials ./ normalizer;
-[coeff_trial, scores_trial, latent_trial] = pca(X_trials_norm);
-coeff_trial = coeff_trial(:, 1:nDims);
-
-% Part D
-[Lambda, ~, ~] = factoran(X_trials_norm, nDims);
-fprintf('Factor Analysis done. Lambda size: %d x %d\n', size(Lambda));
-
-% Part E
-angles_avg_trial = subspacea(coeff, coeff_trial); 
-angles_avg_fa = subspacea(coeff, Lambda);  
-angles_trial_fa = subspacea(coeff_trial, Lambda);   
-
-angles_avg_trial_deg = rad2deg(angles_avg_trial);
-angles_avg_fa_deg = rad2deg(angles_avg_fa);
-angles_trial_fa_deg = rad2deg(angles_trial_fa);
-
-fprintf('Principal angles (degrees):\n');
-fprintf('PCA-avg vs PCA-trial: %s\n', mat2str(round(angles_avg_trial_deg, 1)));
-fprintf('PCA-avg vs FA: %s\n', mat2str(round(angles_avg_fa_deg, 1)));
-fprintf('PCA-trial vs FA: %s\n', mat2str(round(angles_trial_fa_deg, 1)));
-
-figure;
-hold on
-
-x = 1:nDims;
-plot(x, angles_avg_trial_deg, 'r-','DisplayName', 'PCA-avg vs PCA-trial');
-plot(x, angles_avg_fa_deg,    'b-', 'DisplayName', 'PCA-avg vs FA');
-plot(x, angles_trial_fa_deg,  'g-', 'DisplayName', 'PCA-trial vs FA');
-
-xlabel('Principal angle index');
-ylabel('Angle (degrees)');
-title('Principal angles between subspaces');
-legend('Location', 'northwest');
-xticks(1:nDims);
+% Print cumulative variance for the top 6 dims
+fprintf('Cumulative variance explained by top %d PCs: %.1f%%\n', ...
+        nDims, 100 * sum(frac_var(1:nDims)));
