@@ -1,0 +1,68 @@
+%% Part A
+start_time = -100;
+end_time = 400;
+
+
+num_trials = length(R);
+num_units = length(R(1).unit);
+spikeCounts = zeros(n_units, n_trials);
+
+for trial = 1:num_trials
+    targetAppearsTime = R(trial).targetAppearsTime;
+    winLo   = tOn + 100;               % window start (ms)
+    winHi   = tOn + 400;               % window end   (ms)
+
+    for u = 1:nUnits
+        spk = R(t).unit(u).spikeTimes; % spike times in ms for this unit/trial
+        prepCounts(u, t) = sum(spk >= winLo & spk <= winHi);
+    end
+end
+
+fprintf('Part 1A done — spike count matrix: %d units x %d trials\n', nUnits, nTrials);
+
+%% ── Part 1B ──────────────────────────────────────────────────────────────────
+% Average spike counts across trials per condition, convert to spikes/s.
+% Window = 300 ms = 0.3 s.
+
+WINDOW_S = 0.300;   % 300 ms in seconds
+
+cond1 = uniqueConds(1);   % condition 16
+cond2 = uniqueConds(2);   % condition 25
+
+idx1 = condIDs == cond1;
+idx2 = condIDs == cond2;
+
+meanRate1 = mean(prepCounts(:, idx1), 2) / WINDOW_S;   % nUnits x 1, spikes/s
+meanRate2 = mean(prepCounts(:, idx2), 2) / WINDOW_S;
+
+fprintf('Part 1B — Cond %d: %d trials, mean rate across units = %.2f sp/s\n', ...
+        cond1, sum(idx1), mean(meanRate1));
+fprintf('        — Cond %d: %d trials, mean rate across units = %.2f sp/s\n', ...
+        cond2, sum(idx2), mean(meanRate2));
+
+%% ── Part 1C ──────────────────────────────────────────────────────────────────
+% Tuned units: |meanRate1 - meanRate2| >= 2 spikes/s
+
+diff       = abs(meanRate1 - meanRate2);
+tunedMask  = diff >= 2.0;
+tunedIdx   = find(tunedMask);
+
+fprintf('\nPart 1C — Tuned units (|ΔFR| ≥ 2 sp/s): %d / %d\n', ...
+        sum(tunedMask), nUnits);
+fprintf('\n%5s  %14s  %14s  %8s\n', 'Unit', ...
+        sprintf('Cond%d (sp/s)', cond1), ...
+        sprintf('Cond%d (sp/s)', cond2), '|Diff|');
+fprintf('%s\n', repmat('-', 1, 48));
+for k = 1:length(tunedIdx)
+    u = tunedIdx(k);
+    fprintf('%5d  %14.2f  %14.2f  %8.2f\n', u, meanRate1(u), meanRate2(u), diff(u));
+end
+
+%% ── Optional: bar plot of mean rates for tuned units ─────────────────────────
+figure;
+bar([meanRate1(tunedIdx), meanRate2(tunedIdx)]);
+legend(sprintf('Cond %d', cond1), sprintf('Cond %d', cond2));
+xlabel('Tuned Unit Index'); ylabel('Mean Firing Rate (spikes/s)');
+title(sprintf('Part 1C: %d Tuned Units (|\\DeltaFR| \\geq 2 sp/s)', sum(tunedMask)));
+xticks(1:length(tunedIdx)); xticklabels(string(tunedIdx));
+xtickangle(45); grid on;
