@@ -1,3 +1,4 @@
+%% Part 1
 %% Part A
 start_time = 100;
 end_time = 400;
@@ -16,6 +17,8 @@ for trial = 1:num_trials
         spikeCounts(unit, trial) = sum(spike > start_window & spike <= end_window);
     end
 end
+disp('Spike Counts Example');
+disp(spikeCounts(1, :))
 %% Part B
 window_size = (abs(end_time) + abs(start_time)) * 0.001;
 
@@ -30,14 +33,18 @@ cond_two_idx = conditions == cond_two;
 avgRateOne = mean(spikeCounts(:, cond_one_idx), 2) / window_size;
 avgRateTwo = mean(spikeCounts(:, cond_two_idx), 2) / window_size;
 
+disp('Average spike counts (cond 16)');
+disp(avgRateOne)
+disp('Average spike counts (cond 2)');
+disp(avgRateTwo)
+
 %% Part C
 diffRate = abs(avgRateOne - avgRateTwo);
 
 tunedNeuronMask = diffRate >= 2;
 tunedNeuronIdx = find(tunedNeuronMask);
 
-fprintf('\nPart 1C — Tuned units (|ΔFR| ≥ 2 sp/s): %d / %d\n', ...
-        sum(tunedNeuronMask), num_units);
+disp('Tuned units:');
 
 fprintf('\n%5s  %14s  %14s  %8s\n', 'Unit', ...
         sprintf('Cond%d (sp/s)', cond_one), ...
@@ -62,33 +69,24 @@ cv = crossval(mdl, 'KFold', 10);
 lossCV = kfoldLoss(cv); 
 accCV = (1 - lossCV) * 100;
  
-fprintf('\n── Part 2 Results ───────────────────────────────────\n');
 fprintf('10-fold CV misclassification rate : %.4f\n', lossCV);
-fprintf('10-fold CV accuracy               : %.2f%%\n', accCV);
+fprintf('10-fold CV accuracy : %.2f%%\n', accCV);
 
-%% Part 3A: Logistic Regression with glmfit + 10-fold CV
-% Recode labels as 0 and 1 (required for binomial glmfit)
-y_bin = double(conditions' == cond_two);   % cond_two → 1, cond_one → 0
- 
-X_tuned = spikeCounts(tunedNeuronIdx, :)'; % nTrials x nTunedUnits
- 
-% 10-fold cross-validation partition (fixed seed for reproducibility)
-rng(42);
+%% Part 3
+%% Part A
+y_bin = double(conditions' == cond_two);
+X_tuned = spikeCounts(tunedNeuronIdx, :)';
 cv3 = cvpartition(y_bin, 'KFold', 10);
  
 correctLR = 0;
 for fold = 1:cv3.NumTestSets
-    % Training and test sets for this fold
     X_train = X_tuned(cv3.training(fold), :);
     y_train = y_bin(cv3.training(fold));
     X_test  = X_tuned(cv3.test(fold), :);
     y_test  = y_bin(cv3.test(fold));
- 
-    % Fit logistic regression on training data
-    % glmfit prepends an intercept column automatically
+
     b = glmfit(X_train, y_train, 'binomial', 'link', 'logit');
  
-    % Predict probabilities on test data, then threshold at 0.5
     pHat = glmval(b, X_test, 'logit');
     yPred = double(pHat >= 0.5);
  
@@ -97,7 +95,6 @@ end
  
 accLR = correctLR / num_trials * 100;
  
-fprintf('\n── Part 3A Results ──────────────────────────────────\n');
 fprintf('10-fold CV accuracy (Logistic Regression): %.2f%%\n', accLR);
  
 % ── Answer: Why does glmfit produce warnings? ─────────────────────────────────
