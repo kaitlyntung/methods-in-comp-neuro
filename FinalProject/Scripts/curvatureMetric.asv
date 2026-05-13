@@ -9,8 +9,6 @@ num_directions = 36;
 mazeCategory = [R.mazeCategory];
 moveOnsetTimes = [R.moveOnsetTime];
 moveEndsTimes = [R.moveEndsTime];
-targetXYs = {R.targetXY};
-fixationXYs = {R.fixationXY};
 straight_idx = mazeCategory == 'noBarriers';
 curved_idx   = mazeCategory == 'barriers';
 
@@ -23,12 +21,7 @@ moveEndsTime = moveEndsTimes(trial);
 [~, moveOnsetTime_idx] = min(abs(hand_times - moveOnsetTime)); 
 [~, moveEndsTime_idx] = min(abs(hand_times - moveEndsTime)); 
 
-x_pos = x_pos(moveOnsetTime_idx:moveEndsTime_idx);
-y_pos = y_pos(moveOnsetTime_idx:moveEndsTime_idx);
+x_pos = x_pos
+D = pdist2(X, Y, 'euclidean');
+figure;
 
-coordinates = [x_pos, y_pos];
-actual_distances = sqrt(sum(diff(coordinates).^2, 2));
-total_actual_distance = sum(actual_distances);
-
-targetXY = targetXYs(trial);
-fixationXY = fixationXYs(trial);
