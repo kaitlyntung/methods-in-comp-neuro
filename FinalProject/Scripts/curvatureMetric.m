@@ -12,32 +12,31 @@ moveEndsTimes = [R.moveEndsTime];
 targetXYs = {R.targetXY};
 fixationXYs = {R.fixationXY};
 
-% conditionID % 3 == 1 -> noBarriers (straight), % 3 == 2 -> barriers (curved)
 conditionIDs = [R.conditionID];
 straight_idx = mod(conditionIDs, 3) == 1;
 curved_idx   = mod(conditionIDs, 3) == 2;
 
-% Compute curvature index for every trial
 curvature = nan(1, num_trials);
+
 for trial = 1:num_trials
     hand_times = R(trial).HAND.times;
     x_pos = R(trial).HAND.X;
     y_pos = R(trial).HAND.Y;
 
-    [~, onset_idx] = min(abs(hand_times - moveOnsetTimes(trial)));
-    [~, end_idx]   = min(abs(hand_times - moveEndsTimes(trial)));
+    [~, moveOnsetTime_idx] = min(abs(hand_times - moveOnsetTimes(trial)));
+    [~, moveEndsTime_idx]   = min(abs(hand_times - moveEndsTimes(trial)));
 
-    x_seg = x_pos(onset_idx:end_idx);
-    y_seg = y_pos(onset_idx:end_idx);
+    x_segment = x_pos(moveOnsetTime_idx:moveEndsTime_idx);
+    y_segment = y_pos(moveOnsetTime_idx:moveEndsTime_idx);
 
-    if numel(x_seg) < 2
-        continue
-    end
+    % if numel(x_segment) < 2
+    %     continue
+    % end
 
-    coords = [x_seg(:), y_seg(:)];
-    segment_lengths   = sqrt(sum(diff(coords).^2, 2));
+    coordinates = [x_segment(:), y_segment(:)];
+    segment_lengths = sqrt(sum(diff(coordinates).^2, 2));
     total_path_length = sum(segment_lengths);
-    straight_dist     = sqrt((x_seg(end) - x_seg(1))^2 + (y_seg(end) - y_seg(1))^2);
+    straight_dist = sqrt((x_segment(end) - x_segment(1))^2 + (y_segment(end) - y_segment(1))^2);
 
     if straight_dist > 1e-6
         curvature(trial) = total_path_length / straight_dist;
@@ -45,7 +44,8 @@ for trial = 1:num_trials
 end
 
 straight_curv = curvature(straight_idx & ~isnan(curvature));
-curved_curv   = curvature(curved_idx   & ~isnan(curvature));
+curved_curv   = curvature(curved_idx & ~isnan(curvature));
+
 
 % Bootstrapped 95% CI on the mean
 n_boot = 10000;
