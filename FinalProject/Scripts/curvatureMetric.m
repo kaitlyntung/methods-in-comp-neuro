@@ -36,15 +36,16 @@ for trial = 1:num_trials
     coordinates = [x_segment(:), y_segment(:)];
     segment_lengths = sqrt(sum(diff(coordinates).^2, 2));
     total_path_length = sum(segment_lengths);
-    straight_dist = sqrt((x_segment(end) - x_segment(1))^2 + (y_segment(end) - y_segment(1))^2);
+    straight_line_dist = sqrt((x_segment(end) - x_segment(1))^2 + (y_segment(end) - y_segment(1))^2);
 
-    if straight_dist > 1e-6
-        curvature(trial) = total_path_length / straight_dist;
-    end
+    % if straight_dist > 1e-6
+    %     curvature(trial) = total_path_length / straight_dist;
+    % end
+    curvature(trial) = total_path_length / straight_line_dist;
 end
 
 straight_curv = curvature(straight_idx & ~isnan(curvature));
-curved_curv   = curvature(curved_idx & ~isnan(curvature));
+curved_curv = curvature(curved_idx & ~isnan(curvature));
 
 
 % Bootstrapped 95% CI on the mean
