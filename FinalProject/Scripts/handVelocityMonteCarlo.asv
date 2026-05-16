@@ -6,7 +6,6 @@
 % show us if curved and straight reaches have significantly different peak 
 % hand speeds. 
 
-%% Find peak speeds
 num_trials = length(R);
 moveOnsetTimes = [R.moveOnsetTime];
 moveEndsTimes = [R.moveEndsTime];
@@ -85,7 +84,7 @@ p_value = mean(abs(permutation_diffs) >= abs(observed_diff));
 % fprintf('Monte Carlo p-value (two-tailed, n=%d permutations): %.4f\n', n_perm, p_value);
 
 figure;
-histogram(permutation_diffs, 50, 'FaceColor', [0.5 0.5 0.5], 'EdgeColor', 'none', 'Normalization', 'probability');
+histogram(permutation_diffs, 50, 'FaceColor', [0. 0.8 0.8], 'EdgeColor', 'none', 'Normalization', 'probability');
 hold on
 
 xline(observed_diff, 'r--', 'LineWidth', 2);
@@ -93,5 +92,5 @@ xline(-observed_diff, 'r--', 'LineWidth', 2);
 
 xlabel('Difference in Mean Peak Speed (Curved - Straight)');
 ylabel('Proportion of Permutations');
-title(sprintf('Null Distribution (Monte Carlo Permutation Test)\nObserved difference = %.3f, p = %.3f', observed_diff, p_value));
+title(sprintf('Monte Carlo Permutation Test\nObserved difference = %.4f, p = %.4f', observed_diff, p_value));
 legend('Null distribution', 'Observed difference');
