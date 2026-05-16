@@ -85,7 +85,6 @@ fill([straight_ci(1) straight_ci(2) straight_ci(2) straight_ci(1)], ...
 fill([curved_ci(1) curved_ci(2) curved_ci(2) curved_ci(1)], ...
      [0 0 yl(2) yl(2)], 'red', 'FaceAlpha', 0.15, 'EdgeColor', 'none');
 
-% Means
 xline(straight_mean, 'b-', 'LineWidth', 2);
 xline(curved_mean, 'r-', 'LineWidth', 2);
 
