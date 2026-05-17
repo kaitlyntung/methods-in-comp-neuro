@@ -1,20 +1,18 @@
-% -------------------------------------------------------------------------
-% Cross-validated PCA on M1 activity
-% Comparing dimensionality under no normalization, z-score, soft normalization
-% -------------------------------------------------------------------------
+% We will do cross-validated PCA on M1 activity to determine the true low 
+% dimensional structure of the neuron's responses, comparing dimensionality 
+% under no normalization, z-scoring, and soft normalization.
 
-% Time window for neural activity (relative to movement onset, ms)
-pre_window  = 500;
-post_window = 800;
-bin_size    = 50;
-time_bins   = -pre_window : bin_size : post_window;
+pre_window = 500;
+post_window = 750;
+bin_size = 20;
+time_bins = -pre_window : bin_size : post_window;
 bin_centers = time_bins(1:end-1) + bin_size/2;
-n_bins      = numel(bin_centers);
-n_units     = numel(R(1).unit);
+n_bins = numel(bin_centers);
+n_units = numel(R(1).unit);
 
 onset_align = [R.moveOnsetTime];
-all_trials  = [straight_trials(:); curved_trials(:)];
-n_trials    = numel(all_trials);
+all_trials = [straight_trials(:); curved_trials(:)];
+n_trials = numel(all_trials);
 
 % -------------------------------------------------------------------------
 % Step 1: Build firing rate matrix [trials x units x time bins]
@@ -166,63 +164,63 @@ for m = 1:numel(methods)
     fprintf('  %-20s: %.2f\n', norm_labels{m}, eff_dim(m));
 end
 
-% -------------------------------------------------------------------------
-% Plot
-% -------------------------------------------------------------------------
-colors = [0.2  0.2  0.2;    % no norm  (dark)
-          0.29 0.47 0.81;   % z-score  (blue)
-          0.84 0.37 0.37];  % soft     (red)
-
-n_show = min(20, n_comps);  % show first 20 PCs
-
-figure;
-set(gcf, 'Color', 'w', 'Position', [100 100 1200 450]);
-
-% --- Panel 1: Scree plot (per-component CV variance explained) ---
-subplot(1, 3, 1);
-hold on;
-for m = 1:numel(methods)
-    plot(1:n_show, mean_cv_var(m, 1:n_show) * 100, ...
-        'o-', 'Color', colors(m,:), 'LineWidth', 2, 'MarkerSize', 5, ...
-        'DisplayName', norm_labels{m});
-end
-xlabel('Principal Component', 'FontSize', 11);
-ylabel('CV Variance Explained (%)', 'FontSize', 11);
-title('Scree Plot', 'FontSize', 12, 'FontWeight', 'bold');
-legend('Location', 'northeast');
-box off;
-
-% --- Panel 2: Cumulative variance explained ---
-subplot(1, 3, 2);
-hold on;
-for m = 1:numel(methods)
-    plot(1:n_show, cum_cv_var(m, 1:n_show) * 100, ...
-        'o-', 'Color', colors(m,:), 'LineWidth', 2, 'MarkerSize', 5, ...
-        'DisplayName', norm_labels{m});
-end
-yline(80, 'k--', '80%', 'LineWidth', 1.2, 'LabelHorizontalAlignment', 'left');
-yline(95, 'k:',  '95%', 'LineWidth', 1.2, 'LabelHorizontalAlignment', 'left');
-xlabel('Number of Components', 'FontSize', 11);
-ylabel('Cumulative CV Variance Explained (%)', 'FontSize', 11);
-title('Cumulative Variance', 'FontSize', 12, 'FontWeight', 'bold');
-legend('Location', 'southeast');
-box off;
-
-% --- Panel 3: Effective dimensionality bar chart ---
-subplot(1, 3, 3);
-hold on;
-for m = 1:numel(methods)
-    bar(m, eff_dim(m), 0.5, 'FaceColor', colors(m,:), ...
-        'EdgeColor', 'none', 'FaceAlpha', 0.85);
-    text(m, eff_dim(m) + 0.1, sprintf('%.2f', eff_dim(m)), ...
-        'HorizontalAlignment', 'center', 'FontSize', 10);
-end
-xticks(1:numel(methods));
-xticklabels(norm_labels);
-ylabel('Effective Dimensionality', 'FontSize', 11);
-title('Participation Ratio', 'FontSize', 12, 'FontWeight', 'bold');
-xlim([0.5, numel(methods) + 0.5]);
-box off;
-
-sgtitle('Cross-Validated PCA: Dimensionality by Normalization Method', ...
-        'FontSize', 13, 'FontWeight', 'bold');
+% % -------------------------------------------------------------------------
+% % Plot
+% % -------------------------------------------------------------------------
+% colors = [0.2  0.2  0.2;    % no norm  (dark)
+%           0.29 0.47 0.81;   % z-score  (blue)
+%           0.84 0.37 0.37];  % soft     (red)
+% 
+% n_show = min(20, n_comps);  % show first 20 PCs
+% 
+% figure;
+% set(gcf, 'Color', 'w', 'Position', [100 100 1200 450]);
+% 
+% % --- Panel 1: Scree plot (per-component CV variance explained) ---
+% subplot(1, 3, 1);
+% hold on;
+% for m = 1:numel(methods)
+%     plot(1:n_show, mean_cv_var(m, 1:n_show) * 100, ...
+%         'o-', 'Color', colors(m,:), 'LineWidth', 2, 'MarkerSize', 5, ...
+%         'DisplayName', norm_labels{m});
+% end
+% xlabel('Principal Component', 'FontSize', 11);
+% ylabel('CV Variance Explained (%)', 'FontSize', 11);
+% title('Scree Plot', 'FontSize', 12, 'FontWeight', 'bold');
+% legend('Location', 'northeast');
+% box off;
+% 
+% % --- Panel 2: Cumulative variance explained ---
+% subplot(1, 3, 2);
+% hold on;
+% for m = 1:numel(methods)
+%     plot(1:n_show, cum_cv_var(m, 1:n_show) * 100, ...
+%         'o-', 'Color', colors(m,:), 'LineWidth', 2, 'MarkerSize', 5, ...
+%         'DisplayName', norm_labels{m});
+% end
+% yline(80, 'k--', '80%', 'LineWidth', 1.2, 'LabelHorizontalAlignment', 'left');
+% yline(95, 'k:',  '95%', 'LineWidth', 1.2, 'LabelHorizontalAlignment', 'left');
+% xlabel('Number of Components', 'FontSize', 11);
+% ylabel('Cumulative CV Variance Explained (%)', 'FontSize', 11);
+% title('Cumulative Variance', 'FontSize', 12, 'FontWeight', 'bold');
+% legend('Location', 'southeast');
+% box off;
+% 
+% % --- Panel 3: Effective dimensionality bar chart ---
+% subplot(1, 3, 3);
+% hold on;
+% for m = 1:numel(methods)
+%     bar(m, eff_dim(m), 0.5, 'FaceColor', colors(m,:), ...
+%         'EdgeColor', 'none', 'FaceAlpha', 0.85);
+%     text(m, eff_dim(m) + 0.1, sprintf('%.2f', eff_dim(m)), ...
+%         'HorizontalAlignment', 'center', 'FontSize', 10);
+% end
+% xticks(1:numel(methods));
+% xticklabels(norm_labels);
+% ylabel('Effective Dimensionality', 'FontSize', 11);
+% title('Participation Ratio', 'FontSize', 12, 'FontWeight', 'bold');
+% xlim([0.5, numel(methods) + 0.5]);
+% box off;
+% 
+% sgtitle('Cross-Validated PCA: Dimensionality by Normalization Method', ...
+%         'FontSize', 13, 'FontWeight', 'bold');

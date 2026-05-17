@@ -1,165 +1,126 @@
-% -------------------------------------------------------------------------
-% Fano Factor as a function of time: aligned to target appearance and
-% movement onset, split by curved vs straight reaches
-% -------------------------------------------------------------------------
+% We will compute the Fano Factor as a function of time aligned to both the 
+% target appearance and movement onset separately for curved and straight 
+% reaches to determine how variability evolves across delay and movement 
+% and whether this differs for the reach types, considering curved reaches 
+% are arguably more complex.
+conditionIDs = [R.conditionID];
+straight_idx = mod(conditionIDs, 3) == 1;
+curved_idx = mod(conditionIDs, 3) == 2;
 
-% Time windows
-bin_size    = 50;   % ms
-pre_window  = 500;  % ms before alignment event
-post_window = 800;  % ms after alignment event
-time_bins   = -pre_window : bin_size : post_window;
+straight_trials = find(straight_idx);
+curved_trials = find(curved_idx);
+
+bin_size = 40;
+pre_window = 500;
+post_window = 1500;
+time_bins = -pre_window : bin_size : post_window;
 bin_centers = time_bins(1:end-1) + bin_size/2;
 
-% Identify valid trial indices for each condition
-straight_trials = find(straight_idx);
-curved_trials   = find(curved_idx);
+num_units = numel(R(1).unit); % channels
 
-% -------------------------------------------------------------------------
-% Helper: count spikes in bins for a single unit across trials
-% aligned to a given event time per trial
-% -------------------------------------------------------------------------
-function counts = bin_spikes(spike_times, align_times, trial_ids, time_bins, R)
-    n_trials = numel(trial_ids);
-    n_bins   = numel(time_bins) - 1;
-    counts   = nan(n_trials, n_bins);
-    for t = 1:n_trials
-        tr        = trial_ids(t);
-        t0        = align_times(tr);
-        rel_times = spike_times - t0;
-        for b = 1:n_bins
-            counts(t, b) = sum(rel_times >= time_bins(b) & ...
-                               rel_times <  time_bins(b+1));
-        end
-    end
-end
-
-% -------------------------------------------------------------------------
-% Compute Fano Factor: var / mean across trials at each time bin
-% Fano is undefined (set to NaN) when mean == 0
-% -------------------------------------------------------------------------
-function ff = compute_fano(counts)
-    m  = mean(counts, 1);
-    v  = var(counts,  0, 1);
-    ff = nan(size(m));
-    ff(m > 0) = v(m > 0) ./ m(m > 0);
-end
-
-% -------------------------------------------------------------------------
-% Loop over units
-% -------------------------------------------------------------------------
-n_units = numel(R(1).unit);
-
-% Preallocate: units x time bins x 2 (straight/curved) x 2 (target/onset)
-ff_target = nan(n_units, numel(bin_centers), 2);
-ff_onset  = nan(n_units, numel(bin_centers), 2);
+ff_target = nan(num_units, numel(bin_centers), 2);
+ff_onset = nan(num_units, numel(bin_centers), 2);
 
 target_align = [R.targetAppearsTime];
-onset_align  = [R.moveOnsetTime];
+onset_align = [R.moveOnsetTime];
 
-for u = 1:n_units
-
-    % Collect spike times for this unit across all trials
-    % Assumes R(trial).unit(u).spikeTimes holds spike times in ms
+for unit = 1:num_units
     for cond = 1:2
         if cond == 1
             trial_ids = straight_trials;
         else
             trial_ids = curved_trials;
         end
+        num_trials = numel(trial_ids);
+        num_bins = numel(bin_centers);
 
-        n_trials = numel(trial_ids);
-        n_bins   = numel(bin_centers);
+        counts_target = nan(num_trials, num_bins);
+        counts_onset = nan(num_trials, num_bins);
 
-        counts_target = nan(n_trials, n_bins);
-        counts_onset  = nan(n_trials, n_bins);
+        for trial = 1:num_trials
+            tr = trial_ids(trial);
+            spike_times = R(tr).unit(unit).spikeTimes;
 
-        for t = 1:n_trials
-            tr          = trial_ids(t);
-            spike_times = R(tr).unit(u).spikeTimes;
+            time_target = target_align(tr);
+            time_onset = onset_align(tr);
+            relative_to_target = spike_times - time_target;
+            relative_to_onset = spike_times - time_onset;
 
-            % Align to target appearance
-            t0_target = target_align(tr);
-            rel_target = spike_times - t0_target;
-
-            % Align to movement onset
-            t0_onset  = onset_align(tr);
-            rel_onset  = spike_times - t0_onset;
-
-            for b = 1:n_bins
-                counts_target(t, b) = sum(rel_target >= time_bins(b) & ...
-                                          rel_target <  time_bins(b+1));
-                counts_onset(t, b)  = sum(rel_onset  >= time_bins(b) & ...
-                                          rel_onset  <  time_bins(b+1));
+            for bins = 1:num_bins
+                counts_target(trial, bins) = sum(relative_to_target >= time_bins(bins) & ...
+                                          relative_to_target <  time_bins(bins+1));
+                counts_onset(trial, bins) = sum(relative_to_onset  >= time_bins(bins) & ...
+                                          relative_to_onset  <  time_bins(bins+1));
             end
         end
 
-        ff_target(u, :, cond) = compute_fano(counts_target);
-        ff_onset(u,  :, cond) = compute_fano(counts_onset);
+        ff_target(unit, :, cond) = compute_fano_factor(counts_target);
+        ff_onset(unit,  :, cond) = compute_fano_factor(counts_onset);
     end
 end
 
-% -------------------------------------------------------------------------
-% Average Fano Factor across units
-% -------------------------------------------------------------------------
 mean_ff_target_straight = nanmean(ff_target(:, :, 1), 1);
-mean_ff_target_curved   = nanmean(ff_target(:, :, 2), 1);
-mean_ff_onset_straight  = nanmean(ff_onset(:,  :, 1), 1);
-mean_ff_onset_curved    = nanmean(ff_onset(:,  :, 2), 1);
+mean_ff_target_curved = nanmean(ff_target(:, :, 2), 1);
+mean_ff_onset_straight = nanmean(ff_onset(:,  :, 1), 1);
+mean_ff_onset_curved = nanmean(ff_onset(:,  :, 2), 1);
 
-sem_ff_target_straight  = nanstd(ff_target(:, :, 1), 0, 1) / sqrt(n_units);
-sem_ff_target_curved    = nanstd(ff_target(:, :, 2), 0, 1) / sqrt(n_units);
-sem_ff_onset_straight   = nanstd(ff_onset(:,  :, 1), 0, 1) / sqrt(n_units);
-sem_ff_onset_curved     = nanstd(ff_onset(:,  :, 2), 0, 1) / sqrt(n_units);
+sem_ff_target_straight = nanstd(ff_target(:, :, 1), 0, 1) / sqrt(num_units);
+sem_ff_target_curved = nanstd(ff_target(:, :, 2), 0, 1) / sqrt(num_units);
+sem_ff_onset_straight = nanstd(ff_onset(:,  :, 1), 0, 1) / sqrt(num_units);
+sem_ff_onset_curved = nanstd(ff_onset(:,  :, 2), 0, 1) / sqrt(num_units);
 
-% -------------------------------------------------------------------------
-% Plot
-% -------------------------------------------------------------------------
-colors = [0.29 0.47 0.81;   % straight (blue)
-          0.84 0.37 0.37];  % curved   (red)
-
+%% Plotting
 figure;
-set(gcf, 'Color', 'w', 'Position', [100 100 1100 450]);
 
-align_labels = {'Target Appearance', 'Movement Onset'};
+% Target-aligned
+subplot(1,2,1);
+hold on;
 
-for panel = 1:2
-    subplot(1, 2, panel);
-    hold on;
+fill([bin_centers, fliplr(bin_centers)], ...
+     [mean_ff_target_straight + sem_ff_target_straight, fliplr(mean_ff_target_straight - sem_ff_target_straight)], ...
+     [0 0 0.8], 'FaceAlpha', 0.2, 'EdgeColor', 'none');
+fill([bin_centers, fliplr(bin_centers)], ...
+     [mean_ff_target_curved + sem_ff_target_curved, fliplr(mean_ff_target_curved - sem_ff_target_curved)], ...
+     'red', 'FaceAlpha', 0.2, 'EdgeColor', 'none');
 
-    if panel == 1
-        ff_straight = mean_ff_target_straight;
-        ff_curved   = mean_ff_target_curved;
-        se_straight = sem_ff_target_straight;
-        se_curved   = sem_ff_target_curved;
-    else
-        ff_straight = mean_ff_onset_straight;
-        ff_curved   = mean_ff_onset_curved;
-        se_straight = sem_ff_onset_straight;
-        se_curved   = sem_ff_onset_curved;
-    end
+plot(bin_centers, mean_ff_target_straight, 'b-', 'LineWidth', 2);
+plot(bin_centers, mean_ff_target_curved,   'r-', 'LineWidth', 2);
+xline(0, 'k--', 'LineWidth', 1.5);
+yline(1, 'k:', 'LineWidth', 1);
 
-    % Shaded SEM
-    fill([bin_centers, fliplr(bin_centers)], ...
-         [ff_straight + se_straight, fliplr(ff_straight - se_straight)], ...
-         colors(1,:), 'FaceAlpha', 0.2, 'EdgeColor', 'none');
-    fill([bin_centers, fliplr(bin_centers)], ...
-         [ff_curved + se_curved, fliplr(ff_curved - se_curved)], ...
-         colors(2,:), 'FaceAlpha', 0.2, 'EdgeColor', 'none');
+xlabel('Time from Target Appearance (ms)');
+ylabel('Fano Factor');
+title('Target-Aligned');
+legend('No Barriers ± SEM', 'Barriers ± SEM', 'Location', 'best');
 
-    % Mean lines
-    plot(bin_centers, ff_straight, 'Color', colors(1,:), 'LineWidth', 2);
-    plot(bin_centers, ff_curved,   'Color', colors(2,:), 'LineWidth', 2);
+% Onset-aligned
+subplot(1,2,2);
+hold on;
 
-    % Alignment marker
-    xline(0, 'k--', 'LineWidth', 1.5);
+fill([bin_centers, fliplr(bin_centers)], ...
+     [mean_ff_onset_straight + sem_ff_onset_straight, fliplr(mean_ff_onset_straight - sem_ff_onset_straight)], ...
+     [0 0 0.8], 'FaceAlpha', 0.2, 'EdgeColor', 'none');
+fill([bin_centers, fliplr(bin_centers)], ...
+     [mean_ff_onset_curved + sem_ff_onset_curved, fliplr(mean_ff_onset_curved - sem_ff_onset_curved)], ...
+     'red', 'FaceAlpha', 0.2, 'EdgeColor', 'none');
 
-    xlabel(sprintf('Time relative to %s (ms)', align_labels{panel}), 'FontSize', 11);
-    ylabel('Fano Factor', 'FontSize', 11);
-    title(sprintf('Fano Factor aligned to\n%s', align_labels{panel}), ...
-          'FontSize', 12, 'FontWeight', 'bold');
-    legend({'', 'No Barriers', '', 'Barriers'}, 'Location', 'best');
-    box off;
+plot(bin_centers, mean_ff_onset_straight, 'b-', 'LineWidth', 2);
+plot(bin_centers, mean_ff_onset_curved,   'r-', 'LineWidth', 2);
+
+xline(0, 'k--', 'LineWidth', 1.5);
+yline(1, 'k:', 'LineWidth', 1);
+
+xlabel('Time from Movement Onset (ms)');
+ylabel('Fano Factor');
+title('Movement-Aligned');
+legend('No Barriers', 'Barriers', 'Location', 'best');
+
+sgtitle('Trial by Trial Variability (Fano Factor)');
+
+%% Helper functions
+function ff = compute_fano_factor(counts)
+    m = mean(counts, 1);
+    v = var(counts,  0, 1);
+    ff = nan(size(m));
+    ff(m > 0) = v(m > 0) ./ m(m > 0);
 end
-
-sgtitle('Trial-to-Trial Variability: Fano Factor by Condition', ...
-        'FontSize', 13, 'FontWeight', 'bold');
