@@ -163,7 +163,7 @@ hold on;
 for m = 1:numel(methods)
     plot(1:n_show, cum_cv_var(m, 1:n_show) * 100, ...
         'o-', 'Color', colors(m,:), 'LineWidth', 2, 'MarkerSize', 5, ...
-        'DisplayName', normalization_labels{m});
+        'DisplayName', norm_labels{m});
 end
 yline(80, 'k--', '80%', 'LineWidth', 1.2, 'LabelHorizontalAlignment', 'left');
 yline(95, 'k:',  '95%', 'LineWidth', 1.2, 'LabelHorizontalAlignment', 'left');
@@ -183,7 +183,7 @@ for m = 1:numel(methods)
         'HorizontalAlignment', 'center', 'FontSize', 10);
 end
 xticks(1:numel(methods));
-xticklabels(normalization_labels);
+xticklabels(norm_labels);
 ylabel('Effective Dimensionality', 'FontSize', 11);
 title('Participation Ratio', 'FontSize', 12, 'FontWeight', 'bold');
 xlim([0.5, numel(methods) + 0.5]);
