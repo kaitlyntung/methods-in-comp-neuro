@@ -25,169 +25,227 @@ firing_rates = nan(n_trials, n_units, n_bins);
 
 for t = 1:n_trials
     tr = all_trials(t);
+    t0 = onset_align(tr);
     for u = 1:n_units
-        spike_times = R(tr).unit(u).spikeTimes;
-        t0 = onset_align(tr);
-        rel_times = spike_times - t0;
-        for b = 1:n_bins
-            firing_rates(t, u, b) = sum(rel_times >= time_bins(b) & ...
-                               rel_times <  time_bins(b+1)) ...
-                           / (bin_size / 1000);  % convert to Hz CHECK THIS
-        end
+        spike_times = R(tr).unit(u).spikeTimes - t0;
+        counts = histcounts(spike_times, time_bins);
+        firing_rates(t, u, :) = counts / (bin_size / 1000);
     end
 end
+disp('firing rates created')
 
-% no normalization - raw firing rates
-% z score - subtract mean / std
-% soft normalization - divide by, preserves some firing rate structure
+
+n_straight = numel(straight_trials);
+n_curved   = numel(curved_trials);
+
+% Average firing rates across trials per condition [units x bins]
+psth_straight = squeeze(mean(firing_rates(1:n_straight, :, :), 1));
+psth_curved   = squeeze(mean(firing_rates(n_straight+1:end, :, :), 1));
+
+% Stack conditions along time: [units x (2*bins)]
+X_psth = [psth_straight, psth_curved];
+
 normalization_labels = {'No Normalization', 'Z-Score', 'Soft Normalization'};
-
-soft_norm_alpha = 5;
-normalize_FR = @(X, method) normalize(X, method, soft_norm_alpha);
-
-function X_norm = normalize(X, method, alpha)
-    [n_trials, n_units, n_bins] = size(X);
-    X_flat = reshape(X, n_trials, n_units * n_bins);
-
-    switch method
-        case 'none'
-            X_norm = X_flat;
-        case 'zscore'
-            mu = mean(X_flat, 1);
-            sigma = std(X_flat,  0, 1);
-            sigma(sigma == 0) = 1;
-            X_norm = (X_flat - mu) ./ sigma;
-
-        case 'soft'
-            fr_range = max(X_flat, [], 1) - min(X_flat, [], 1);
-            X_norm = X_flat ./ (fr_range + alpha);
-    end
-    X_norm = reshape(X_norm, n_trials, n_units, n_bins);
-end
-
-% -------------------------------------------------------------------------
-% Step 3: Cross-validated PCA
-% Randomly split trials into two halves. Fit PCA on half A, project half B.
-% Compute cross-validated variance explained as covariance between
-% projections of the two halves onto the PCs from half A.
-% Repeat n_cv times and average.
-% -------------------------------------------------------------------------
-n_cv    = 50;
-n_comps = min(n_units, floor(n_trials/2)) - 1;  % can't exceed half the trials
-
-cv_var_explained = nan(numel(normalization_labels), n_comps, n_cv);
 methods = {'none', 'zscore', 'soft'};
+soft_norm_alpha = 5;
+n_plot = 10;
+colors_method = [0 0 0; 0 0 0.8; 0.8 0 0];  % black, blue, red
 
-rng(42);
+% Store results for each method
+all_explained = nan(numel(methods), size(X_psth, 2));
+all_score     = cell(numel(methods), 1);
+
 for m = 1:numel(methods)
-
-    FR_norm = normalize_FR(FR, methods{m});
-
-    % Collapse to [trials x (units*bins)] — keep trials as observations
-    % so the two halves are cleanly separable
-    [nt, nu, nb] = size(FR_norm);
-    X = reshape(FR_norm, nt, nu * nb);  % [trials x (units*bins)]
-
-    for cv = 1:n_cv
-        perm  = randperm(nt);
-        half  = floor(nt / 2);
-        idx_A = perm(1:half);
-        idx_B = perm(half+1:half*2);  % keep halves equal size
-
-        X_A = X(idx_A, :);   % [half x (units*bins)]
-        X_B = X(idx_B, :);   % [half x (units*bins)]
-
-        % Mean-center using half A's mean only
-        mu_A = mean(X_A, 1);
-        X_A  = X_A - mu_A;
-        X_B  = X_B - mu_A;
-
-        % PCA on half A
-        C_A      = (X_A' * X_A) / (size(X_A, 1) - 1);
-        [V, D]   = eig(C_A);
-        [~, ord] = sort(diag(D), 'descend');
-        V        = V(:, ord);
-        V        = V(:, 1:n_comps);
-
-        % Project half B onto PCs from half A
-        proj_B = X_B * V;   % [half x n_comps]
-
-        % Variance explained in B by each PC from A
-        % This is the key fix: measure how much variance each PC
-        % captures in the held-out data, relative to total variance in B
-        total_var_B = sum(var(X_B, 0, 1));  % total variance in held-out half
-        for k = 1:n_comps
-            cv_var_explained(m, k, cv) = var(proj_B(:, k)) / total_var_B;
-        end
+    switch methods{m}
+        case 'none'
+            X_norm = X_psth;
+        case 'zscore'
+            mu    = mean(X_psth, 2);
+            sigma = std(X_psth, 0, 2);
+            sigma(sigma == 0) = 1;
+            X_norm = (X_psth - mu) ./ sigma;
+        case 'soft'
+            fr_range = max(X_psth, [], 2) - min(X_psth, [], 2);
+            X_norm   = X_psth ./ (fr_range + soft_norm_alpha);
     end
+
+    % Mean center across time
+    X_norm = X_norm - mean(X_norm, 2);
+
+    % PCA
+    [~, score, ~, ~, explained] = pca(X_norm');
+    all_explained(m, 1:numel(explained)) = explained;
+    all_score{m} = score;
 end
 
-% Average across CV folds
-mean_cv_var = squeeze(nanmean(cv_var_explained, 3));   % [n_methods x n_comps]
-cum_cv_var  = cumsum(mean_cv_var, 2);
-
-% Effective dimensionality: participation ratio
-eff_dim = nan(1, numel(methods));
+% Scree Plot
+figure;
+hold on;
 for m = 1:numel(methods)
-    lam        = mean_cv_var(m, :);
-    eff_dim(m) = sum(lam)^2 / sum(lam.^2);
+    plot(1:n_plot, all_explained(m, 1:n_plot), '-o', ...
+        'Color', colors_method(m,:), 'LineWidth', 2);
 end
+xlabel('Principal Component');
+ylabel('Variance Explained (%)');
+title('Scree Plot');
+legend(normalization_labels, 'Location', 'northeast');
 
-%% Plot
-colors = [0.2  0.2  0.2;    % no norm  (dark)
-          0.29 0.47 0.81;   % z-score  (blue)
-          0.84 0.37 0.37];  % soft     (red)
-
-n_show = min(20, n_comps);  % show first 20 PCs
+% Cumulative Variance
+figure;
+hold on;
+for m = 1:numel(methods)
+    cum_exp = cumsum(all_explained(m, :));
+    plot(1:n_plot, cum_exp(1:n_plot), '-o', ...
+        'Color', colors_method(m,:), 'LineWidth', 2);
+end
+yline(80, 'k--', 'LineWidth', 1.5, 'Label', '80%');
+yline(95, 'k:',  'LineWidth', 1.5, 'Label', '95%');
+xlabel('Number of Components');
+ylabel('Cumulative Variance Explained (%)');
+title('Cumulative Variance');
+ylim([0 100]);
+legend(normalization_labels, 'Location', 'southeast');
 
 figure;
-set(gcf, 'Color', 'w', 'Position', [100 100 1200 450]);
-
-% --- Panel 1: Scree plot (per-component CV variance explained) ---
-subplot(1, 3, 1);
-hold on;
+pc_colors = nebula(3);
 for m = 1:numel(methods)
-    plot(1:n_show, mean_cv_var(m, 1:n_show) * 100, ...
-        'o-', 'Color', colors(m,:), 'LineWidth', 2, 'MarkerSize', 5, ...
-        'DisplayName', normalization_labels{m});
+    subplot(1, 3, m);
+    hold on;
+    score = all_score{m};
+    for k = 1:3
+        pc_straight = score(1:n_bins, k);
+        pc_curved = score(n_bins+1:end, k);
+        plot(bin_centers, pc_straight, '-',  'Color', pc_colors(k,:), 'LineWidth', 2);
+        plot(bin_centers, pc_curved,   '--', 'Color', pc_colors(k,:), 'LineWidth', 2);
+    end
+    xline(0, 'k--', 'LineWidth', 1.5);
+    xlabel('Time from Movement Onset (ms)');
+    ylabel('PC Score');
+    title(normalization_labels{m});
+    if m == 1
+        legend('PC1 Straight', 'PC1 Curved', 'PC2 Straight', 'PC2 Curved', ...
+               'PC3 Straight', 'PC3 Curved', 'Location', 'best');
+    end
 end
-xlabel('Principal Component', 'FontSize', 11);
-ylabel('CV Variance Explained (%)', 'FontSize', 11);
-title('Scree Plot', 'FontSize', 12, 'FontWeight', 'bold');
-legend('Location', 'northeast');
-box off;
+sgtitle('Top 3 PCs Over Time by Normalization Method');
 
-% --- Panel 2: Cumulative variance explained ---
-subplot(1, 3, 2);
-hold on;
+figure;
 for m = 1:numel(methods)
-    plot(1:n_show, cum_cv_var(m, 1:n_show) * 100, ...
-        'o-', 'Color', colors(m,:), 'LineWidth', 2, 'MarkerSize', 5, ...
-        'DisplayName', normalization_labels{m});
+    subplot(1, 3, m);
+    hold on;
+    score = all_score{m};
+    
+    pc1_straight = score(1:n_bins, 1);
+    pc2_straight = score(1:n_bins, 2);
+    pc3_straight = score(1:n_bins, 3);
+    
+    pc1_curved = score(n_bins+1:end, 1);
+    pc2_curved = score(n_bins+1:end, 2);
+    pc3_curved = score(n_bins+1:end, 3);
+    
+    % Plot 3D trajectories
+    plot3(pc1_straight, pc2_straight, pc3_straight, '-', ...
+        'Color', [0 0.45 0.7], 'LineWidth', 2);
+    plot3(pc1_curved, pc2_curved, pc3_curved, '-', ...
+        'Color', [0.85 0.33 0.1], 'LineWidth', 2);
+    
+    % Mark movement onset (find bin closest to t=0)
+    [~, onset_bin] = min(abs(bin_centers));
+    
+    % Start markers
+    plot3(pc1_straight(1), pc2_straight(1), pc3_straight(1), ...
+        'o', 'Color', [0 0.45 0.7], 'MarkerFaceColor', [0 0.45 0.7], 'MarkerSize', 8);
+    plot3(pc1_curved(1), pc2_curved(1), pc3_curved(1), ...
+        'o', 'Color', [0.85 0.33 0.1], 'MarkerFaceColor', [0.85 0.33 0.1], 'MarkerSize', 8);
+    
+    % Movement onset markers
+    plot3(pc1_straight(onset_bin), pc2_straight(onset_bin), pc3_straight(onset_bin), ...
+        'd', 'Color', [0 0.45 0.7], 'MarkerFaceColor', [0 0.45 0.7], 'MarkerSize', 8);
+    plot3(pc1_curved(onset_bin), pc2_curved(onset_bin), pc3_curved(onset_bin), ...
+        'd', 'Color', [0.85 0.33 0.1], 'MarkerFaceColor', [0.85 0.33 0.1], 'MarkerSize', 8);
+    
+    % End markers
+    plot3(pc1_straight(end), pc2_straight(end), pc3_straight(end), ...
+        's', 'Color', [0 0.45 0.7], 'MarkerFaceColor', [0 0.45 0.7], 'MarkerSize', 8);
+    plot3(pc1_curved(end), pc2_curved(end), pc3_curved(end), ...
+        's', 'Color', [0.85 0.33 0.1], 'MarkerFaceColor', [0.85 0.33 0.1], 'MarkerSize', 8);
+    
+    xlabel('PC1'); ylabel('PC2'); zlabel('PC3');
+    title(normalization_labels{m});
+    grid on;
+    view(45, 25);  % azimuth, elevation — adjust to taste
+    
+    if m == 1
+        legend('Straight', 'Curved', ...
+            'Start (Straight)', 'Start (Curved)', ...
+            'Onset (Straight)', 'Onset (Curved)', ...
+            'End (Straight)', 'End (Curved)', ...
+            'Location', 'best');
+    end
 end
-yline(80, 'k--', '80%', 'LineWidth', 1.2, 'LabelHorizontalAlignment', 'left');
-yline(95, 'k:',  '95%', 'LineWidth', 1.2, 'LabelHorizontalAlignment', 'left');
-xlabel('Number of Components', 'FontSize', 11);
-ylabel('Cumulative CV Variance Explained (%)', 'FontSize', 11);
-title('Cumulative Variance', 'FontSize', 12, 'FontWeight', 'bold');
-legend('Location', 'southeast');
-box off;
+sgtitle('Neural Trajectories in PC Space by Normalization Method');
 
-% --- Panel 3: Effective dimensionality bar chart ---
-subplot(1, 3, 3);
-hold on;
-for m = 1:numel(methods)
-    bar(m, eff_dim(m), 0.5, 'FaceColor', colors(m,:), ...
-        'EdgeColor', 'none', 'FaceAlpha', 0.85);
-    text(m, eff_dim(m) + 0.1, sprintf('%.2f', eff_dim(m)), ...
-        'HorizontalAlignment', 'center', 'FontSize', 10);
+%%
+figure;
+condition_names = {'Straight', 'Curved'};
+cond_mod = [1, 2];
+
+for cond = 1:2
+    subplot(1, 2, cond);
+    hold on;
+    
+    for d = 1:n_dirs_actual
+        target_condID = straight_condIDs(d) + (cond_mod(cond) - 1);
+        trial_idx = find(conditionIDs == target_condID);
+        
+        if numel(trial_idx) < 3
+            continue;
+        end
+        
+        % Average across trials → one PSTH per direction×condition
+        psth = squeeze(mean(firing_rates(trial_idx, :, :), 1));  % units x bins
+        psth_norm = psth ./ (fr_range + 5);
+        psth_norm = psth_norm - mean(psth_norm, 2);
+        
+        % Project onto shared PC space → one trajectory
+        score = (coeff(:,1:3)' * psth_norm)';  % bins x 3
+        
+        % Smooth trajectory a little to reduce jagginess
+        score = smoothdata(score, 1, 'gaussian', 5);
+        
+        % Plot trajectory
+        plot3(score(:,1), score(:,2), score(:,3), '-', ...
+            'Color', dir_colors(d,:), 'LineWidth', 2);
+        
+        % Start dot
+        plot3(score(1,1), score(1,2), score(1,3), ...
+            'o', 'Color', dir_colors(d,:), ...
+            'MarkerFaceColor', dir_colors(d,:), 'MarkerSize', 5);
+        
+        % Movement onset diamond
+        plot3(score(onset_bin,1), score(onset_bin,2), score(onset_bin,3), ...
+            'd', 'Color', dir_colors(d,:), ...
+            'MarkerFaceColor', dir_colors(d,:), 'MarkerSize', 7);
+        
+        % End square
+        plot3(score(end,1), score(end,2), score(end,3), ...
+            's', 'Color', dir_colors(d,:), ...
+            'MarkerFaceColor', dir_colors(d,:), 'MarkerSize', 5);
+    end
+    
+    xlabel(sprintf('PC1 (%.1f%%)', explained(1)));
+    ylabel(sprintf('PC2 (%.1f%%)', explained(2)));
+    zlabel(sprintf('PC3 (%.1f%%)', explained(3)));
+    title(condition_names{cond});
+    grid on;
+    view(45, 25);
+    axis tight;
 end
-xticks(1:numel(methods));
-xticklabels(normalization_labels);
-ylabel('Effective Dimensionality', 'FontSize', 11);
-title('Participation Ratio', 'FontSize', 12, 'FontWeight', 'bold');
-xlim([0.5, numel(methods) + 0.5]);
-box off;
 
-sgtitle('Cross-Validated PCA: Dimensionality by Normalization Method', ...
-        'FontSize', 13, 'FontWeight', 'bold');
+% Match axis limits across both panels
+subplot(1,2,1); ax1 = gca;
+subplot(1,2,2); ax2 = gca;
+all_lims = [ax1.XLim; ax2.XLim; ax1.YLim; ax2.YLim; ax1.ZLim; ax2.ZLim];
+x_lim = [min(all_lims([1,2],1)), max(all_lims([1,2],2))];
+y_lim = [min(all_lims([3,4],1)), max(all_lims([3,4],2))];
+z_lim = [min(all_lims([5,6],1)), max(all_lims([5,6],2))];

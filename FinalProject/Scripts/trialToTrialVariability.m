@@ -10,9 +10,9 @@ curved_idx = mod(conditionIDs, 3) == 2;
 straight_trials = find(straight_idx);
 curved_trials = find(curved_idx);
 
-bin_size = 40;
-pre_window = 500;
-post_window = 1500;
+bin_size = 20;
+pre_window = 200;
+post_window = 750;
 time_bins = -pre_window : bin_size : post_window;
 bin_centers = time_bins(1:end-1) + bin_size/2;
 
