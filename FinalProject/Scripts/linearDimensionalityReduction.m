@@ -193,3 +193,95 @@ all_lims = [ax1.XLim; ax2.XLim; ax1.YLim; ax2.YLim; ax1.ZLim; ax2.ZLim];
 x_lim = [min(all_lims([1,2],1)), max(all_lims([1,2],2))];
 y_lim = [min(all_lims([3,4],1)), max(all_lims([3,4],2))];
 z_lim = [min(all_lims([5,6],1)), max(all_lims([5,6],2))];
+
+%%
+% Build angle-to-conditionID mapping
+targetXY = reshape([R.targetXY], 2, [])';
+angles = atan2d(targetXY(:,2), targetXY(:,1));
+angleGroups = round(angles / 45) * 45;
+angleGroups(angleGroups == 180) = -180;
+uniqueGroups = unique(angleGroups);
+nGroups = length(uniqueGroups);  % should be 7
+
+% Color by angle group — use circular colormap so opposite dirs are distinct
+dir_colors = hsv(nGroups);
+
+% Angle labels for legend
+angle_labels = arrayfun(@(a) sprintf('%d°', a), uniqueGroups, 'UniformOutput', false);
+
+%%
+targetXY = reshape([R.targetXY], 2, [])';angles = atan2d(targetXY(:,2), targetXY(:,1));angleGroups = round(angles / 45) * 45;angleGroups(angleGroups == 180) = -180;uniqueGroups = unique(angleGroups);nGroups = length(uniqueGroups);
+
+figure;
+condition_names = {'Straight', 'Curved'};
+cond_mod = [1, 2];
+
+for cond = 1:2
+    subplot(1, 2, cond);
+    hold on;
+
+    for d = 1:nGroups
+        % Find trials matching this angle group AND this condition type
+        angle_mask = angleGroups == uniqueGroups(d);
+        cond_mask  = mod(conditionIDs, 3) == cond_mod(cond);
+        trial_idx  = find(angle_mask & cond_mask);
+
+        if numel(trial_idx) < 3
+            continue;
+        end
+
+        % Average across trials → one PSTH per direction×condition
+        psth = squeeze(mean(firing_rates(trial_idx, :, :), 1));  % units x bins
+        psth_norm = psth ./ (fr_range + 5);
+        psth_norm = psth_norm - mean(psth_norm, 2);
+
+        % Project onto shared PC space → one trajectory
+        score = (coeff(:,1:3)' * psth_norm)';  % bins x 3
+
+        % Smooth trajectory
+        score = smoothdata(score, 1, 'gaussian', 5);
+
+        % Plot trajectory
+        plot3(score(:,1), score(:,2), score(:,3), '-', ...
+            'Color', dir_colors(d,:), 'LineWidth', 2);
+
+        % Start dot
+        plot3(score(1,1), score(1,2), score(1,3), ...
+            'o', 'Color', dir_colors(d,:), ...
+            'MarkerFaceColor', dir_colors(d,:), 'MarkerSize', 5);
+
+        % Movement onset diamond
+        plot3(score(onset_bin,1), score(onset_bin,2), score(onset_bin,3), ...
+            'd', 'Color', dir_colors(d,:), ...
+            'MarkerFaceColor', dir_colors(d,:), 'MarkerSize', 7);
+
+        % End square
+        plot3(score(end,1), score(end,2), score(end,3), ...
+            's', 'Color', dir_colors(d,:), ...
+            'MarkerFaceColor', dir_colors(d,:), 'MarkerSize', 5);
+    end
+
+    xlabel(sprintf('PC1 (%.1f%%)', explained(1)));
+    ylabel(sprintf('PC2 (%.1f%%)', explained(2)));
+    zlabel(sprintf('PC3 (%.1f%%)', explained(3)));
+    title(condition_names{cond});
+    grid on;
+    view(45, 25);
+    axis tight;
+
+    % Add direction legend to each panel
+    legend(arrayfun(@(a) sprintf('%d°', a), uniqueGroups', 'UniformOutput', false), ...
+        'Location', 'bestoutside', 'FontSize', 8);
+end
+
+% Match axis limits across both panels
+subplot(1,2,1); ax1 = gca;
+subplot(1,2,2); ax2 = gca;
+all_lims = [ax1.XLim; ax2.XLim; ax1.YLim; ax2.YLim; ax1.ZLim; ax2.ZLim];
+x_lim = [min(all_lims([1,2],1)), max(all_lims([1,2],2))];
+y_lim = [min(all_lims([3,4],1)), max(all_lims([3,4],2))];
+z_lim = [min(all_lims([5,6],1)), max(all_lims([5,6],2))];
+set(ax1, 'XLim', x_lim, 'YLim', y_lim, 'ZLim', z_lim);
+set(ax2, 'XLim', x_lim, 'YLim', y_lim, 'ZLim', z_lim);
+
+sgtitle('Neural Trajectories — 7 directions × straight/curved');
