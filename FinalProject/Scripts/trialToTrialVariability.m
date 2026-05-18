@@ -46,8 +46,8 @@ for unit = 1:num_units
             spike_times = R(tr).unit(unit).spikeTimes;
 
             rel_target = spike_times - target_align(tr);
-            rel_gocue  = spike_times - gocue_align(tr);
-            rel_onset  = spike_times - onset_align(tr);
+            rel_gocue = spike_times - gocue_align(tr);
+            rel_onset = spike_times - onset_align(tr);
 
             for b = 1:num_bins
                 t_lo = bin_centers(b) - bin_size/2;

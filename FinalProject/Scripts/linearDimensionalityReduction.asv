@@ -55,15 +55,6 @@ colors_method = [0 0 0; 0 0 0.8; 0.8 0 0];  % black, blue, red
 all_explained = nan(numel(methods), size(X_psth, 2));
 all_score     = cell(numel(methods), 1);
 
-n_folds = 5;
-max_dims = 20;
-
-% X_psth is [n_units x (2*n_bins)] — straight and curved stacked
-% CV splits along the time/condition columns (observations for PCA)
-n_cols = size(X_psth, 2);  % 2*n_bins columns
-
-cv_loss = nan(numel(methods), max_dims);
-
 for m = 1:numel(methods)
     switch methods{m}
         case 'none'
@@ -77,63 +68,17 @@ for m = 1:numel(methods)
             fr_range = max(X_psth, [], 2) - min(X_psth, [], 2);
             X_norm   = X_psth ./ (fr_range + soft_norm_alpha);
     end
+
+    % Mean center across time
     X_norm = X_norm - mean(X_norm, 2);
 
-    % X_norm is [n_units x n_cols]
-    % PCA convention: observations are columns (time points), features are units
-    % So we pass X_norm' [n_cols x n_units] to pca()
-
-    fold_loss = nan(n_folds, max_dims);
-
-    % Build k-fold split over columns (time points)
-    idx = randperm(n_cols);
-    cv_idx = zeros(n_cols, 1);
-    fold_size = floor(n_cols / n_folds);
-    for f = 1:n_folds
-        cv_idx(idx((f-1)*fold_size + 1 : f*fold_size)) = f;
-    end
-    cv_idx(cv_idx == 0) = n_folds;
-
-    for f = 1:n_folds
-        test_mask  = (cv_idx == f);
-        train_mask = ~test_mask;
-
-        X_train = X_norm(:, train_mask)';  % [train_cols x n_units]
-        X_test  = X_norm(:, test_mask)';   % [test_cols  x n_units]
-
-        % Mean center using training mean
-        train_mean = mean(X_train, 1);
-        X_train = X_train - train_mean;
-        X_test  = X_test  - train_mean;
-
-        % Fit PCA on training data
-        coeff = pca(X_train);  % [n_units x n_units]
-
-        for k = 1:max_dims
-            W = coeff(:, 1:k);
-            X_recon = (X_test * W) * W';
-            fold_loss(f, k) = mean((X_test(:) - X_recon(:)).^2);
-        end
-    end
-
-    cv_loss(m, :) = mean(fold_loss, 1);
+    % PCA
+    [~, score, ~, ~, explained] = pca(X_norm');
+    all_explained(m, 1:numel(explained)) = explained;
+    all_score{m} = score;
 end
 
-%% Plot
-figure; hold on;
-for m = 1:numel(methods)
-    loss = cv_loss(m,:);
-    loss_norm = (loss - min(loss)) / (max(loss) - min(loss));
-    plot(1:max_dims, loss_norm, '-o', ...
-        'Color', colors_method(m,:), 'LineWidth', 2);
-end
-xlabel('Number of PCs (k)');
-ylabel('Normalized Reconstruction Error (0-1)');
-title('Cross-Validated PCA Loss by Dimensionality (Normalized)');
-legend(normalization_labels, 'Location', 'northeast');
-grid on;
-%% Scree plot
-figure;
+%% figure;
 hold on;
 for m = 1:numel(methods)
     plot(1:n_plot, all_explained(m, 1:n_plot), '-o', ...
@@ -144,8 +89,7 @@ ylabel('Variance Explained (%)');
 title('Scree Plot');
 legend(normalization_labels, 'Location', 'northeast');
 
-
-%% Cumulative variance
+% Cumulative Variance
 figure;
 hold on;
 for m = 1:numel(methods)
@@ -161,7 +105,6 @@ title('Cumulative Variance');
 ylim([0 100]);
 legend(normalization_labels, 'Location', 'southeast');
 
-%% 2D PC trajectories over time
 figure;
 pc_colors = nebula(3);
 for m = 1:numel(methods)
@@ -185,7 +128,7 @@ for m = 1:numel(methods)
 end
 sgtitle('Top 3 PCs Over Time by Normalization Method');
 
-%% 3D PC trajectories by direction
+%% 3D plot by direction
 targetXY = reshape([R.targetXY], 2, [])';
 angles = atan2d(targetXY(:,2), targetXY(:,1));
 angleGroups = round(angles / 45) * 45;
@@ -283,27 +226,3 @@ annotation('textbox', [0.01, 0.01, 0.3, 0.06], ...
 grid on;
 axis equal;
 view(35, 25);
-
-%%
-% for m = 1:numel(methods)
-%     switch methods{m}
-%         case 'none'
-%             X_norm = X_psth;
-%         case 'zscore'
-%             mu    = mean(X_psth, 2);
-%             sigma = std(X_psth, 0, 2);
-%             sigma(sigma == 0) = 1;
-%             X_norm = (X_psth - mu) ./ sigma;
-%         case 'soft'
-%             fr_range = max(X_psth, [], 2) - min(X_psth, [], 2);
-%             X_norm   = X_psth ./ (fr_range + soft_norm_alpha);
-%     end
-% 
-%     % Mean center across time
-%     X_norm = X_norm - mean(X_norm, 2);
-% 
-%     % PCA
-%     [~, score, ~, ~, explained] = pca(X_norm');
-%     all_explained(m, 1:numel(explained)) = explained;
-%     all_score{m} = score;
-% end
