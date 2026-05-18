@@ -6,27 +6,27 @@
 
 conditionIDs = [R.conditionID];
 straight_idx = mod(conditionIDs, 3) == 1;
-curved_idx   = mod(conditionIDs, 3) == 2;
+curved_idx = mod(conditionIDs, 3) == 2;
 
 straight_trials = find(straight_idx);
-curved_trials   = find(curved_idx);
+curved_trials = find(curved_idx);
 
-bin_size   = 50;
-step_size  = 10;
-pre_window  = 400;
+bin_size = 50;
+step_size = 10;
+pre_window = 400;
 post_window = 600;
 
 bin_centers = (-pre_window + bin_size/2) : step_size : (post_window - bin_size/2);
-num_bins    = numel(bin_centers);
-num_units   = numel(R(1).unit);
+num_bins = numel(bin_centers);
+num_units = numel(R(1).unit);
 
 target_align = [R.targetAppearsTime];
-gocue_align  = [R.goCueTime];
-onset_align  = [R.moveOnsetTime];
+gocue_align = [R.goCueTime];
+onset_align = [R.moveOnsetTime];
 
 ff_target = nan(num_units, num_bins, 2);
-ff_gocue  = nan(num_units, num_bins, 2);
-ff_onset  = nan(num_units, num_bins, 2);
+ff_gocue = nan(num_units, num_bins, 2);
+ff_onset = nan(num_units, num_bins, 2);
 
 for unit = 1:num_units
     for cond = 1:2
@@ -38,11 +38,11 @@ for unit = 1:num_units
         num_trials = numel(trial_ids);
 
         counts_target = nan(num_trials, num_bins);
-        counts_gocue  = nan(num_trials, num_bins);
-        counts_onset  = nan(num_trials, num_bins);
+        counts_gocue = nan(num_trials, num_bins);
+        counts_onset = nan(num_trials, num_bins);
 
         for trial = 1:num_trials
-            tr          = trial_ids(trial);
+            tr = trial_ids(trial);
             spike_times = R(tr).unit(unit).spikeTimes;
 
             rel_target = spike_times - target_align(tr);
@@ -54,19 +54,19 @@ for unit = 1:num_units
                 t_hi = bin_centers(b) + bin_size/2;
 
                 counts_target(trial, b) = sum(rel_target >= t_lo & rel_target < t_hi);
-                counts_gocue( trial, b) = sum(rel_gocue  >= t_lo & rel_gocue  < t_hi);
-                counts_onset( trial, b) = sum(rel_onset  >= t_lo & rel_onset  < t_hi);
+                counts_gocue(trial, b) = sum(rel_gocue >= t_lo & rel_gocue < t_hi);
+                counts_onset(trial, b) = sum(rel_onset >= t_lo & rel_onset < t_hi);
             end
         end
 
         ff_target(unit, :, cond) = compute_fano_factor(counts_target);
-        ff_gocue( unit, :, cond) = compute_fano_factor(counts_gocue);
-        ff_onset( unit, :, cond) = compute_fano_factor(counts_onset);
+        ff_gocue(unit, :, cond) = compute_fano_factor(counts_gocue);
+        ff_onset(unit, :, cond) = compute_fano_factor(counts_onset);
     end
 end
 
 mean_ff = @(ff, cond) nanmean(ff(:, :, cond), 1);
-sem_ff  = @(ff, cond) nanstd(ff(:, :, cond), 0, 1) / sqrt(sum(~all(isnan(ff(:,:,cond)), 2)));
+sem_ff = @(ff, cond) nanstd(ff(:, :, cond), 0, 1) / sqrt(sum(~all(isnan(ff(:,:,cond)), 2)));
 
 %% Plotting
 colors = struct('straight', [0 0 0.8], 'curved', [0.8 0 0]);
