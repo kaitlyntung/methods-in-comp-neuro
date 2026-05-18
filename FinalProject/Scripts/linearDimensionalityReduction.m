@@ -129,75 +129,69 @@ for m = 1:numel(methods)
 end
 sgtitle('Top 3 PCs Over Time by Normalization Method');
 
-%%
-figure;
-condition_names = {'Straight', 'Curved'};
-cond_mod = [1, 2];
+% %%
+% figure;
+% condition_names = {'Straight', 'Curved'};
+% cond_mod = [1, 2];
+% 
+% for cond = 1:2
+%     subplot(1, 2, cond);
+%     hold on;
+% 
+%     for d = 1:36
+%         target_condID = straight_condIDs(d) + (cond_mod(cond) - 1);
+%         trial_idx = find(conditionIDs == target_condID);
+% 
+%         if numel(trial_idx) < 3
+%             continue;
+%         end
+% 
+%         psth = squeeze(mean(firing_rates(trial_idx, :, :), 1));  % units x bins
+%         psth_norm = psth ./ (fr_range + 5);
+%         psth_norm = psth_norm - mean(psth_norm, 2);
+% 
+%         score = (coeff(:,1:3)' * psth_norm)';  % bins x 3
+% 
+%         score = smoothdata(score, 1, 'gaussian', 5);
+% 
+%         plot3(score(:,1), score(:,2), score(:,3), '-', ...
+%             'Color', dir_colors(d,:), 'LineWidth', 2);
+% 
+%         % Start dot
+%         plot3(score(1,1), score(1,2), score(1,3), ...
+%             'o', 'Color', dir_colors(d,:), ...
+%             'MarkerFaceColor', dir_colors(d,:), 'MarkerSize', 5);
+% 
+%         % Movement onset diamond
+%         plot3(score(onset_bin,1), score(onset_bin,2), score(onset_bin,3), ...
+%             'd', 'Color', dir_colors(d,:), ...
+%             'MarkerFaceColor', dir_colors(d,:), 'MarkerSize', 7);
+% 
+%         % End square
+%         plot3(score(end,1), score(end,2), score(end,3), ...
+%             's', 'Color', dir_colors(d,:), ...
+%             'MarkerFaceColor', dir_colors(d,:), 'MarkerSize', 5);
+%     end
+% 
+%     xlabel(sprintf('PC1 (%.1f%%)', explained(1)));
+%     ylabel(sprintf('PC2 (%.1f%%)', explained(2)));
+%     zlabel(sprintf('PC3 (%.1f%%)', explained(3)));
+%     title(condition_names{cond});
+%     grid on;
+%     view(45, 25);
+%     axis tight;
+% end
+% 
+% % Match axis limits across both panels
+% subplot(1,2,1); ax1 = gca;
+% subplot(1,2,2); ax2 = gca;
+% all_lims = [ax1.XLim; ax2.XLim; ax1.YLim; ax2.YLim; ax1.ZLim; ax2.ZLim];
+% x_lim = [min(all_lims([1,2],1)), max(all_lims([1,2],2))];
+% y_lim = [min(all_lims([3,4],1)), max(all_lims([3,4],2))];
+% z_lim = [min(all_lims([5,6],1)), max(all_lims([5,6],2))];
 
-for cond = 1:2
-    subplot(1, 2, cond);
-    hold on;
-    
-    for d = 1:36
-        target_condID = straight_condIDs(d) + (cond_mod(cond) - 1);
-        trial_idx = find(conditionIDs == target_condID);
-        
-        if numel(trial_idx) < 3
-            continue;
-        end
-        
-        % Average across trials → one PSTH per direction×condition
-        psth = squeeze(mean(firing_rates(trial_idx, :, :), 1));  % units x bins
-        psth_norm = psth ./ (fr_range + 5);
-        psth_norm = psth_norm - mean(psth_norm, 2);
-        
-        % Project onto shared PC space → one trajectory
-        score = (coeff(:,1:3)' * psth_norm)';  % bins x 3
-        
-        % Smooth trajectory a little to reduce jagginess
-        score = smoothdata(score, 1, 'gaussian', 5);
-        
-        % Plot trajectory
-        plot3(score(:,1), score(:,2), score(:,3), '-', ...
-            'Color', dir_colors(d,:), 'LineWidth', 2);
-        
-        % Start dot
-        plot3(score(1,1), score(1,2), score(1,3), ...
-            'o', 'Color', dir_colors(d,:), ...
-            'MarkerFaceColor', dir_colors(d,:), 'MarkerSize', 5);
-        
-        % Movement onset diamond
-        plot3(score(onset_bin,1), score(onset_bin,2), score(onset_bin,3), ...
-            'd', 'Color', dir_colors(d,:), ...
-            'MarkerFaceColor', dir_colors(d,:), 'MarkerSize', 7);
-        
-        % End square
-        plot3(score(end,1), score(end,2), score(end,3), ...
-            's', 'Color', dir_colors(d,:), ...
-            'MarkerFaceColor', dir_colors(d,:), 'MarkerSize', 5);
-    end
-    
-    xlabel(sprintf('PC1 (%.1f%%)', explained(1)));
-    ylabel(sprintf('PC2 (%.1f%%)', explained(2)));
-    zlabel(sprintf('PC3 (%.1f%%)', explained(3)));
-    title(condition_names{cond});
-    grid on;
-    view(45, 25);
-    axis tight;
-end
-
-% Match axis limits across both panels
-subplot(1,2,1); ax1 = gca;
-subplot(1,2,2); ax2 = gca;
-all_lims = [ax1.XLim; ax2.XLim; ax1.YLim; ax2.YLim; ax1.ZLim; ax2.ZLim];
-x_lim = [min(all_lims([1,2],1)), max(all_lims([1,2],2))];
-y_lim = [min(all_lims([3,4],1)), max(all_lims([3,4],2))];
-z_lim = [min(all_lims([5,6],1)), max(all_lims([5,6],2))];
-
-%%
 %% 3D Neural Trajectories by Direction Condition
 
-% --- Find the 7 direction groups ---
 targetXY = reshape([R.targetXY], 2, [])';
 angles = atan2d(targetXY(:,2), targetXY(:,1));
 angleGroups = round(angles / 45) * 45;
@@ -205,10 +199,6 @@ angleGroups(angleGroups == 180) = -180;
 uniqueGroups = unique(angleGroups);
 nGroups = length(uniqueGroups);
 
-% --- Use PCs from the chosen normalization (e.g. soft normalization, m=3) ---
-% Recompute on full dataset (all conditions pooled over direction groups)
-
-% Build firing rate matrix for all trials, pooled
 all_trial_ids = 1:numel(R);
 n_all = numel(all_trial_ids);
 
@@ -223,7 +213,6 @@ for t = 1:n_all
     end
 end
 
-% Compute mean PSTH per direction group: [units x (nGroups * n_bins)]
 psth_groups = nan(n_units, nGroups * n_bins);
 group_labels = nan(n_all, 1);
 for g = 1:nGroups

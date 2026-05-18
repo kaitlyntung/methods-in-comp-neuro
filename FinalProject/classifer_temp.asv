@@ -14,65 +14,72 @@ curved_idx = mod(conditionIDs, 3) == 2;
 straight_trials = find(straight_idx);
 curved_trials = find(curved_idx);
 
-windows.delay = [-500, 0];
+windows.delay   = [-500, 0];
 windows.movement = [0, 500];
-window_labels = {'Delay Period', 'Movement Period'};
-window_names = {'delay', 'movement'};
-n_windows = numel(window_labels);
+window_labels    = {'Delay Period', 'Movement Period'};
+window_names     = {'delay', 'movement'};
+n_windows        = numel(window_labels);
 
-bin_size = 50;
-time_bins  = windows.delay(1) : bin_size : windows.movement(2);
+bin_size    = 50;
+time_bins   = windows.delay(1) : bin_size : windows.movement(2);
 bin_centers = time_bins(1:end-1) + bin_size/2;
 
 all_trials = [straight_trials(:); curved_trials(:)];
-labels = [zeros(numel(straight_trials), 1); ones(numel(curved_trials), 1)];
-n_trials = numel(all_trials);
+labels     = [zeros(numel(straight_trials), 1); ones(numel(curved_trials), 1)];
+n_trials   = numel(all_trials);
 
-n_perm = 1000;
+n_perm     = 1000;
 n_cv_folds = 5;
 
-delay_bins = bin_centers >= -500 & bin_centers < 0;
+delay_bins    = bin_centers >= -500 & bin_centers < 0;
 movement_bins = bin_centers >= 0    & bin_centers < 500;
 
-X_delay = squeeze(mean(firing_rates(:, :, delay_bins),    3));
+X_delay    = squeeze(mean(firing_rates(:, :, delay_bins),    3));
 X_movement = squeeze(mean(firing_rates(:, :, movement_bins), 3));
 
 window_features = {X_delay, X_movement};
 
-methods = {'svm', 'logreg'};
+methods       = {'svm', 'logreg'};
 method_labels = {'SVM (Linear)', 'Logistic Regression'};
-n_methods = numel(methods);
+n_methods     = numel(methods);
 
-targetXY = reshape([R.targetXY], 2, [])';
-angles = atan2d(targetXY(:,2), targetXY(:,1));
+targetXY    = reshape([R.targetXY], 2, [])';
+angles      = atan2d(targetXY(:,2), targetXY(:,1));
 angleGroups = round(angles / 45) * 45;
 angleGroups(angleGroups == 180) = -180;
 uniqueGroups = unique(angleGroups);
-nGroups = numel(uniqueGroups);
+nGroups      = numel(uniqueGroups);
 
 dir_labels_all = nan(numel(R), 1);
 for g = 1:nGroups
     dir_labels_all(angleGroups == uniqueGroups(g)) = g;
 end
 
-chance_level_dir = 1 / nGroups;
+chance_level_dir   = 1 / nGroups;
 barrier_conditions = {straight_trials, curved_trials};
 barrier_labels_str = {'Straight (No Barriers)', 'Curved (Barriers)'};
-n_barrier = numel(barrier_conditions);
+n_barrier          = numel(barrier_conditions);
 
-obs_acc_dir = nan(n_methods, n_windows, n_barrier);
+obs_acc_dir  = nan(n_methods, n_windows, n_barrier);
 perm_acc_dir = nan(n_methods, n_windows, n_barrier, n_perm);
 p_values_dir = nan(n_methods, n_windows, n_barrier);
-pred_store = cell(n_methods, n_windows, n_barrier);
-true_store = cell(n_methods, n_windows, n_barrier);
+pred_store   = cell(n_methods, n_windows, n_barrier);
+true_store   = cell(n_methods, n_windows, n_barrier);
+
+fr_trial_index = all_trials;
 
 for b = 1:n_barrier
-    trial_ids = barrier_conditions{b};
+    trial_ids  = barrier_conditions{b};
     dir_labels = dir_labels_all(trial_ids);
-    n_tr = numel(trial_ids);
+    n_tr       = numel(trial_ids);
 
-    X_delay_b = squeeze(mean(firing_rates(row_idx, :, delay_bins),    3));
-    X_movement_b = squeeze(mean(firing_rates(row_idx, :, movement_bins), 3));
+    [found, row_idx] = ismember(trial_ids, fr_trial_index);
+    if any(~found)
+        error('Some trials not found in firing_rates index for barrier condition %d.', b);
+    end
+
+    X_delay_b         = squeeze(mean(firing_rates(row_idx, :, delay_bins),    3));
+    X_movement_b      = squeeze(mean(firing_rates(row_idx, :, movement_bins), 3));
     window_features_b = {X_delay_b, X_movement_b};
 
     for w = 1:n_windows
@@ -123,7 +130,7 @@ for b = 1:n_barrier
 end
 fprintf('%s\n', repmat('-', 1, 75));
 
-%% Plotting
+%% Plotting — confusion matrices
 angle_strs = arrayfun(@(a) sprintf('%d°', a), uniqueGroups, 'UniformOutput', false);
 
 for b = 1:n_barrier
