@@ -129,62 +129,6 @@ for m = 1:numel(methods)
 end
 sgtitle('Top 3 PCs Over Time by Normalization Method');
 
-figure;
-for m = 1:numel(methods)
-    subplot(1, 3, m);
-    hold on;
-    score = all_score{m};
-    
-    pc1_straight = score(1:n_bins, 1);
-    pc2_straight = score(1:n_bins, 2);
-    pc3_straight = score(1:n_bins, 3);
-    
-    pc1_curved = score(n_bins+1:end, 1);
-    pc2_curved = score(n_bins+1:end, 2);
-    pc3_curved = score(n_bins+1:end, 3);
-    
-    % Plot 3D trajectories
-    plot3(pc1_straight, pc2_straight, pc3_straight, '-', ...
-        'Color', [0 0.45 0.7], 'LineWidth', 2);
-    plot3(pc1_curved, pc2_curved, pc3_curved, '-', ...
-        'Color', [0.85 0.33 0.1], 'LineWidth', 2);
-    
-    % Mark movement onset (find bin closest to t=0)
-    [~, onset_bin] = min(abs(bin_centers));
-    
-    % Start markers
-    plot3(pc1_straight(1), pc2_straight(1), pc3_straight(1), ...
-        'o', 'Color', [0 0.45 0.7], 'MarkerFaceColor', [0 0.45 0.7], 'MarkerSize', 8);
-    plot3(pc1_curved(1), pc2_curved(1), pc3_curved(1), ...
-        'o', 'Color', [0.85 0.33 0.1], 'MarkerFaceColor', [0.85 0.33 0.1], 'MarkerSize', 8);
-    
-    % Movement onset markers
-    plot3(pc1_straight(onset_bin), pc2_straight(onset_bin), pc3_straight(onset_bin), ...
-        'd', 'Color', [0 0.45 0.7], 'MarkerFaceColor', [0 0.45 0.7], 'MarkerSize', 8);
-    plot3(pc1_curved(onset_bin), pc2_curved(onset_bin), pc3_curved(onset_bin), ...
-        'd', 'Color', [0.85 0.33 0.1], 'MarkerFaceColor', [0.85 0.33 0.1], 'MarkerSize', 8);
-    
-    % End markers
-    plot3(pc1_straight(end), pc2_straight(end), pc3_straight(end), ...
-        's', 'Color', [0 0.45 0.7], 'MarkerFaceColor', [0 0.45 0.7], 'MarkerSize', 8);
-    plot3(pc1_curved(end), pc2_curved(end), pc3_curved(end), ...
-        's', 'Color', [0.85 0.33 0.1], 'MarkerFaceColor', [0.85 0.33 0.1], 'MarkerSize', 8);
-    
-    xlabel('PC1'); ylabel('PC2'); zlabel('PC3');
-    title(normalization_labels{m});
-    grid on;
-    view(45, 25);  % azimuth, elevation — adjust to taste
-    
-    if m == 1
-        legend('Straight', 'Curved', ...
-            'Start (Straight)', 'Start (Curved)', ...
-            'Onset (Straight)', 'Onset (Curved)', ...
-            'End (Straight)', 'End (Curved)', ...
-            'Location', 'best');
-    end
-end
-sgtitle('Neural Trajectories in PC Space by Normalization Method');
-
 %%
 figure;
 condition_names = {'Straight', 'Curved'};
@@ -194,7 +138,7 @@ for cond = 1:2
     subplot(1, 2, cond);
     hold on;
     
-    for d = 1:n_dirs_actual
+    for d = 1:36
         target_condID = straight_condIDs(d) + (cond_mod(cond) - 1);
         trial_idx = find(conditionIDs == target_condID);
         

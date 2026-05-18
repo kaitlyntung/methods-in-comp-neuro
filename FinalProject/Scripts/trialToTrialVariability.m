@@ -10,9 +10,9 @@ curved_idx = mod(conditionIDs, 3) == 2;
 straight_trials = find(straight_idx);
 curved_trials = find(curved_idx);
 
-bin_size = 20;
+bin_size = 50;
 pre_window = 200;
-post_window = 750;
+post_window = 500;
 time_bins = -pre_window : bin_size : post_window;
 bin_centers = time_bins(1:end-1) + bin_size/2;
 
@@ -59,15 +59,15 @@ for unit = 1:num_units
     end
 end
 
-mean_ff_target_straight = nanmean(ff_target(:, :, 1), 1);
-mean_ff_target_curved = nanmean(ff_target(:, :, 2), 1);
-mean_ff_onset_straight = nanmean(ff_onset(:,  :, 1), 1);
-mean_ff_onset_curved = nanmean(ff_onset(:,  :, 2), 1);
-
-sem_ff_target_straight = nanstd(ff_target(:, :, 1), 0, 1) / sqrt(num_units);
-sem_ff_target_curved = nanstd(ff_target(:, :, 2), 0, 1) / sqrt(num_units);
-sem_ff_onset_straight = nanstd(ff_onset(:,  :, 1), 0, 1) / sqrt(num_units);
-sem_ff_onset_curved = nanstd(ff_onset(:,  :, 2), 0, 1) / sqrt(num_units);
+% mean_ff_target_straight = nanmean(ff_target(:, :, 1), 1);
+% mean_ff_target_curved = nanmean(ff_target(:, :, 2), 1);
+% mean_ff_onset_straight = nanmean(ff_onset(:,  :, 1), 1);
+% mean_ff_onset_curved = nanmean(ff_onset(:,  :, 2), 1);
+% 
+% sem_ff_target_straight = nanstd(ff_target(:, :, 1), 0, 1) / sqrt(num_units);
+% sem_ff_target_curved = nanstd(ff_target(:, :, 2), 0, 1) / sqrt(num_units);
+% sem_ff_onset_straight = nanstd(ff_onset(:,  :, 1), 0, 1) / sqrt(num_units);
+% sem_ff_onset_curved = nanstd(ff_onset(:,  :, 2), 0, 1) / sqrt(num_units);
 
 %% Plotting
 figure;
@@ -76,36 +76,36 @@ figure;
 subplot(1,2,1);
 hold on;
 
-fill([bin_centers, fliplr(bin_centers)], ...
-     [mean_ff_target_straight + sem_ff_target_straight, fliplr(mean_ff_target_straight - sem_ff_target_straight)], ...
-     [0 0 0.8], 'FaceAlpha', 0.2, 'EdgeColor', 'none');
-fill([bin_centers, fliplr(bin_centers)], ...
-     [mean_ff_target_curved + sem_ff_target_curved, fliplr(mean_ff_target_curved - sem_ff_target_curved)], ...
-     'red', 'FaceAlpha', 0.2, 'EdgeColor', 'none');
+% fill([bin_centers, fliplr(bin_centers)], ...
+%      [mean_ff_target_straight + sem_ff_target_straight, fliplr(mean_ff_target_straight - sem_ff_target_straight)], ...
+%      [0 0 0.8], 'FaceAlpha', 0.2, 'EdgeColor', 'none');
+% fill([bin_centers, fliplr(bin_centers)], ...
+%      [mean_ff_target_curved + sem_ff_target_curved, fliplr(mean_ff_target_curved - sem_ff_target_curved)], ...
+%      'red', 'FaceAlpha', 0.2, 'EdgeColor', 'none');
 
-plot(bin_centers, mean_ff_target_straight, 'b-', 'LineWidth', 2);
-plot(bin_centers, mean_ff_target_curved,   'r-', 'LineWidth', 2);
+plot(bin_centers, ff_target(53, :, 1), 'b-', 'LineWidth', 2);
+plot(bin_centers, ff_target(53, :, 2),   'r-', 'LineWidth', 2);
 xline(0, 'k--', 'LineWidth', 1.5);
 yline(1, 'k:', 'LineWidth', 1);
 
 xlabel('Time from Target Appearance (ms)');
 ylabel('Fano Factor');
 title('Target-Aligned');
-legend('No Barriers ± SEM', 'Barriers ± SEM', 'Location', 'best');
+legend('No Barriers', 'Barriers', 'Location', 'best');
 
 % Onset-aligned
 subplot(1,2,2);
 hold on;
 
-fill([bin_centers, fliplr(bin_centers)], ...
-     [mean_ff_onset_straight + sem_ff_onset_straight, fliplr(mean_ff_onset_straight - sem_ff_onset_straight)], ...
-     [0 0 0.8], 'FaceAlpha', 0.2, 'EdgeColor', 'none');
-fill([bin_centers, fliplr(bin_centers)], ...
-     [mean_ff_onset_curved + sem_ff_onset_curved, fliplr(mean_ff_onset_curved - sem_ff_onset_curved)], ...
-     'red', 'FaceAlpha', 0.2, 'EdgeColor', 'none');
+% fill([bin_centers, fliplr(bin_centers)], ...
+%      [mean_ff_onset_straight + sem_ff_onset_straight, fliplr(mean_ff_onset_straight - sem_ff_onset_straight)], ...
+%      [0 0 0.8], 'FaceAlpha', 0.2, 'EdgeColor', 'none');
+% fill([bin_centers, fliplr(bin_centers)], ...
+%      [mean_ff_onset_curved + sem_ff_onset_curved, fliplr(mean_ff_onset_curved - sem_ff_onset_curved)], ...
+%      'red', 'FaceAlpha', 0.2, 'EdgeColor', 'none');
 
-plot(bin_centers, mean_ff_onset_straight, 'b-', 'LineWidth', 2);
-plot(bin_centers, mean_ff_onset_curved,   'r-', 'LineWidth', 2);
+plot(bin_centers, ff_onset(53, :, 1), 'b-', 'LineWidth', 2);
+plot(bin_centers, ff_onset(53, :, 2),   'r-', 'LineWidth', 2);
 
 xline(0, 'k--', 'LineWidth', 1.5);
 yline(1, 'k:', 'LineWidth', 1);
@@ -124,3 +124,5 @@ function ff = compute_fano_factor(counts)
     ff = nan(size(m));
     ff(m > 0) = v(m > 0) ./ m(m > 0);
 end
+
+%%
