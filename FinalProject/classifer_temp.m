@@ -1,16 +1,8 @@
-% We will classify curved vs. straight reaches based on neural data from
-% the delay and movement period separately using SVM and logistic
-% regression to assess when kinematic information is encoded in M1.
-% We will assess the significance of our classifier using a Monte Carlo
-% shuffle test, where we shuffle curved vs straight trial labels 1000 times
-% to generate a null distribution and compute a p-value for each
-% method/time-window combination.
-
 windows.delay    = [-500, 0];
 windows.movement = [0, 500];
 window_labels    = {'Delay Period', 'Movement Period'};
 window_names     = {'delay', 'movement'};
-n_windows        = numel(window_labels);   % <-- was missing
+n_windows        = numel(window_labels);
 
 all_trials = [straight_trials(:); curved_trials(:)];
 labels     = [zeros(numel(straight_trials), 1); ones(numel(curved_trials), 1)];
@@ -22,7 +14,6 @@ n_cv_folds = 3;
 delay_bins    = bin_centers >= -500 & bin_centers < 0;
 movement_bins = bin_centers >= 0    & bin_centers < 500;
 
-% firing rates from the linearDimensionalityReduction script
 X_delay    = squeeze(mean(firing_rates(:, :, delay_bins),    3));
 X_movement = squeeze(mean(firing_rates(:, :, movement_bins), 3));
 
@@ -36,20 +27,17 @@ obs_acc  = nan(n_methods, n_windows);
 perm_acc = nan(n_methods, n_windows, n_perm);
 p_values = nan(n_methods, n_windows);
 
+%% --- Straight vs Curved classifier (the original loop that was missing) ---
 for w = 1:n_windows
     X = window_features{w};
     for m = 1:n_methods
         obs_acc(m, w) = classify_kfold(X, labels, methods{m}, n_cv_folds);
 
-        % parfor moved to the outermost loop it can own cleanly;
-        % broadcast X, labels, method string, n_cv_folds as sliced/const inputs
-        method_m = methods{m};
+        method_m     = methods{m};
         perm_acc_tmp = nan(n_perm, 1);
-
         parfor p = 1:n_perm
-            disp(p)
-            shuf_labels      = labels(randperm(n_trials));
-            perm_acc_tmp(p)  = classify_kfold(X, shuf_labels, method_m, n_cv_folds);
+            shuf_labels     = labels(randperm(n_trials));
+            perm_acc_tmp(p) = classify_kfold(X, shuf_labels, method_m, n_cv_folds);
         end
 
         perm_acc(m, w, :) = perm_acc_tmp;
@@ -59,7 +47,6 @@ for w = 1:n_windows
     end
 end
 
-% --- Results table ---
 fprintf('\n%s\n', repmat('-', 1, 65));
 fprintf('%-22s %-20s %-10s %-10s\n', 'Method', 'Window', 'Accuracy', 'p-value');
 fprintf('%s\n', repmat('-', 1, 65));
@@ -72,114 +59,82 @@ for w = 1:n_windows
 end
 fprintf('%s\n', repmat('-', 1, 65));
 
+%% --- Direction classifier within each barrier condition ---
+targetXY    = reshape([R.targetXY], 2, [])';
+angles      = atan2d(targetXY(:,2), targetXY(:,1));
+angleGroups = round(angles / 45) * 45;
+angleGroups(angleGroups == 180) = -180;
+uniqueGroups = unique(angleGroups);
+nGroups      = numel(uniqueGroups);
 
-%% PLOT
-clr.svm    = [0.20, 0.45, 0.75];
-clr.logreg = [0.85, 0.33, 0.10];
-method_colors = {clr.svm, clr.logreg};
+dir_labels_all = nan(numel(R), 1);
+for g = 1:nGroups
+    dir_labels_all(angleGroups == uniqueGroups(g)) = g;
+end
 
-chance_level = 0.50;
+chance_level_dir = 1 / nGroups;
 
-% --- Figure 1: Accuracy comparison ---
-figure('Name', 'Accuracy Comparison', 'Color', 'w', 'Position', [100, 100, 560, 420]);
+barrier_conditions = {straight_trials, curved_trials};
+barrier_labels_str = {'Straight (No Barriers)', 'Curved (Barriers)'};
+n_barrier          = numel(barrier_conditions);
 
-group_centers = 1:n_windows;
-bar_width     = 0.3;
-offsets       = [-0.18, 0.18];
+obs_acc_dir  = nan(n_methods, n_windows, n_barrier);
+perm_acc_dir = nan(n_methods, n_windows, n_barrier, n_perm);
+p_values_dir = nan(n_methods, n_windows, n_barrier);
 
-ax = axes; hold(ax, 'on');
-bar_handles = gobjects(n_methods, 1);
+% Build a lookup from trial ID -> row in firing_rates
+% firing_rates rows correspond to all_trials order, so we verify this explicitly
+fr_trial_index = all_trials;  % row i of firing_rates = trial fr_trial_index(i)
 
-for m = 1:n_methods
-    x_pos = group_centers + offsets(m);
-    bar_handles(m) = bar(x_pos, obs_acc(m, :), bar_width, ...
-                         'FaceColor', method_colors{m}, ...
-                         'EdgeColor', 'none', ...
-                         'FaceAlpha', 0.85);
+for b = 1:n_barrier
+    trial_ids  = barrier_conditions{b};
+    dir_labels = dir_labels_all(trial_ids);
+    n_tr       = numel(trial_ids);
 
-    null_95 = squeeze(prctile(perm_acc(m, :, :), 95, 3));
+    % Map trial IDs to firing_rates rows safely
+    [found, row_idx] = ismember(trial_ids, fr_trial_index);
+    if any(~found)
+        error('Some trials in barrier condition %d not found in firing_rates index.', b);
+    end
+
+    X_delay_b    = squeeze(mean(firing_rates(row_idx, :, delay_bins),    3));
+    X_movement_b = squeeze(mean(firing_rates(row_idx, :, movement_bins), 3));
+    window_features_b = {X_delay_b, X_movement_b};
+
     for w = 1:n_windows
-        plot(ax, [x_pos(w), x_pos(w)], [obs_acc(m,w), null_95(w)], ...
-             'k-', 'LineWidth', 1.2);
-        plot(ax, x_pos(w) + [-0.05, 0.05], [null_95(w), null_95(w)], ...
-             'k-', 'LineWidth', 1.2);
+        X = window_features_b{w};
+        for m = 1:n_methods
+            obs_acc_dir(m, w, b) = classify_kfold(X, dir_labels, methods{m}, n_cv_folds);
 
-        star  = significance_label(p_values(m, w));
-        y_top = max(obs_acc(m,w), null_95(w)) + 0.025;
+            method_m     = methods{m};
+            perm_acc_tmp = nan(n_perm, 1);
+            parfor p = 1:n_perm
+                shuf_labels     = dir_labels(randperm(n_tr));
+                perm_acc_tmp(p) = classify_kfold(X, shuf_labels, method_m, n_cv_folds);
+            end
 
-        text(ax, x_pos(w), obs_acc(m,w) - 0.03, ...
-             sprintf('%.1f%%', obs_acc(m,w) * 100), ...
-             'HorizontalAlignment', 'center', ...
-             'FontSize', 9, 'Color', 'w', 'FontWeight', 'bold');
+            perm_acc_dir(m, w, b, :) = perm_acc_tmp;
+            p_values_dir(m, w, b)    = (sum(perm_acc_tmp >= obs_acc_dir(m,w,b)) + 1) / (n_perm + 1);
 
-        if ~strcmp(star, '(n.s.)')
-            text(ax, x_pos(w), y_top, star, ...
-                 'HorizontalAlignment', 'center', ...
-                 'FontSize', 13, 'FontWeight', 'bold', 'Color', 'k');
+            fprintf('Done: %s | %s | %s\n', method_labels{m}, window_labels{w}, barrier_labels_str{b});
         end
     end
 end
 
-yline(ax, chance_level, '--', 'Color', [0.4 0.4 0.4], 'LineWidth', 1.4, ...
-      'Label', 'Chance (50%)', 'LabelHorizontalAlignment', 'left', 'FontSize', 10);
-
-ax.XTick         = group_centers;
-ax.XTickLabel    = window_labels;
-ax.XLim          = [0.5, n_windows + 0.5];
-ax.YLim          = [0.3, 1.05];
-ax.YLabel.String = 'Accuracy';
-ax.Title.String  = 'Classifier Accuracy by Method & Time Window';
-ax.FontSize      = 12;
-ax.Box           = 'off';
-legend(ax, bar_handles, method_labels, 'Location', 'northwest', 'Box', 'off');
-
-% --- Figure 2: Null distributions ---
-figure('Name', 'Null Distributions', 'Color', 'w', ...
-       'Position', [150, 150, 320 * n_windows, 280 * n_methods]);
-
-panel = 0;
-for m = 1:n_methods
+fprintf('\n%s\n', repmat('-', 1, 75));
+fprintf('%-22s %-20s %-24s %-10s %-10s\n', 'Method', 'Window', 'Condition', 'Accuracy', 'p-value');
+fprintf('%s\n', repmat('-', 1, 75));
+for b = 1:n_barrier
     for w = 1:n_windows
-        panel = panel + 1;
-        ax2   = subplot(n_methods, n_windows, panel);
-        hold(ax2, 'on');
-
-        null_dist = squeeze(perm_acc(m, w, :));
-
-        histogram(null_dist, 30, ...
-                  'FaceColor', method_colors{m}, 'EdgeColor', 'none', ...
-                  'FaceAlpha', 0.55, 'Normalization', 'probability');
-
-        thresh = prctile(null_dist, 95);
-        xline(ax2, thresh, '--', 'Color', [0.3 0.3 0.3], 'LineWidth', 1.4, ...
-              'Label', '95th pct.', 'LabelVerticalAlignment', 'bottom', 'FontSize', 8);
-
-        xline(ax2, obs_acc(m, w), '-', 'Color', method_colors{m}, 'LineWidth', 2.2, ...
-              'Label', sprintf('Observed (%.1f%%)', obs_acc(m,w) * 100), ...
-              'LabelVerticalAlignment', 'top', 'FontSize', 8);
-
-        xline(ax2, chance_level, ':', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.2, ...
-              'Label', 'Chance', 'LabelVerticalAlignment', 'bottom', 'FontSize', 8);
-
-        % --- p-value formatted to never display as 0.0000 ---
-        p_val = p_values(m, w);
-        if p_val < 0.0001
-            p_str = '< 0.0001';
-        else
-            p_str = sprintf('%.4f', p_val);
+        for m = 1:n_methods
+            fprintf('%-22s %-20s %-24s %-10.3f %-10.4f %s\n', ...
+                method_labels{m}, window_labels{w}, barrier_labels_str{b}, ...
+                obs_acc_dir(m,w,b), p_values_dir(m,w,b), ...
+                significance_label(p_values_dir(m,w,b)));
         end
-
-        ax2.XLabel.String = 'Accuracy';
-        ax2.YLabel.String = 'Proportion';
-        ax2.Title.String  = sprintf('%s — %s\nacc = %.1f%%,  p = %s  %s', ...
-            method_labels{m}, window_labels{w}, ...
-            obs_acc(m,w) * 100, p_str, significance_label(p_val));
-        ax2.FontSize = 10;
-        ax2.Box      = 'off';
     end
 end
-sgtitle('Null Distributions vs. Observed Accuracy', 'FontSize', 13, 'FontWeight', 'bold');
-
+fprintf('%s\n', repmat('-', 1, 75));
 
 %% Helper functions
 function acc = classify_kfold(X, y, method, k)
@@ -191,11 +146,11 @@ function acc = classify_kfold(X, y, method, k)
         X_test  = X(cv.test(fold),     :);
         y_test  = y(cv.test(fold));
 
-        mu             = mean(X_train, 1);
-        sigma          = std(X_train,  0, 1);
-        sigma(sigma==0)= 1;
-        X_train        = (X_train - mu) ./ sigma;
-        X_test         = (X_test  - mu) ./ sigma;
+        mu              = mean(X_train, 1);
+        sigma           = std(X_train,  0, 1);
+        sigma(sigma==0) = 1;
+        X_train         = (X_train - mu) ./ sigma;
+        X_test          = (X_test  - mu) ./ sigma;
 
         switch method
             case 'svm'
