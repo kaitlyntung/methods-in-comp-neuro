@@ -9,8 +9,8 @@ curved_idx = mod(conditionIDs, 3) == 2;
 straight_trials = find(straight_idx);
 curved_trials = find(curved_idx);
 
-pre_window = 500;
-post_window = 1500;
+pre_window = 150;
+post_window = 50;
 bin_size = 20;
 time_bins = -pre_window : bin_size : post_window;
 bin_centers = time_bins(1:end-1) + bin_size/2;
@@ -101,12 +101,10 @@ for m = 1:numel(methods)
         X_train = X_norm(:, train_mask)';  % [train_cols x n_units]
         X_test  = X_norm(:, test_mask)';   % [test_cols  x n_units]
 
-        % Mean center using training mean
         train_mean = mean(X_train, 1);
         X_train = X_train - train_mean;
         X_test  = X_test  - train_mean;
 
-        % Fit PCA on training data
         coeff = pca(X_train);  % [n_units x n_units]
 
         for k = 1:max_dims

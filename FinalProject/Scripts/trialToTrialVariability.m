@@ -93,7 +93,7 @@ end
 mean_ff = @(ff, cond) nanmean(ff(:, :, cond), 1);
 sem_ff  = @(ff, cond) nanstd(ff(:, :, cond), 0, 1) / sqrt(sum(~all(isnan(ff(:,:,cond)), 2)));
 
-%% Plotting
+%Plotting
 colors = struct('straight', [0 0 0.8], 'curved', [0.8 0 0]);
 align_labels = {'Target Appearance', 'Go Cue', 'Movement Onset'};
 x_labels     = {'Time from Target Appearance (ms)', ...
@@ -112,10 +112,19 @@ for a = 1:3
     for cond = 1:2
         m  = mean_ff(ff, cond);
         sem = sem_ff(ff, cond);
+        if cond == 1
+            col = colors.straight;
+            lbl = 'Straight';
+            fill_lbl = 'SEM Straight';
+        else
+            col = colors.curved;
+            lbl = 'Curved';
+            fill_lbl = 'SEM Curved';
+        end
 
         fill([bin_centers, fliplr(bin_centers)], ...
              [m + sem, fliplr(m - sem)], ...
-             col, 'FaceAlpha', 0.2, 'EdgeColor', 'none');
+             col, 'FaceAlpha', 0.2, 'EdgeColor', 'none', 'DisplayName', fill_lbl);
 
         plot(bin_centers, m, '-', 'Color', col, 'LineWidth', 2, 'DisplayName', lbl);
     end
@@ -127,11 +136,14 @@ for a = 1:3
     ylabel('Fano Factor');
     title(align_labels{a});
     xlim([-pre_window, post_window]);
+    if a == 1
+        legend('Location', 'best');
+    end
 end
 
 sgtitle('Population Fano Factor');
 
-%% Helper functions
+%% Helper function
 function ff = compute_fano_factor(counts)
     m  = mean(counts, 1);
     v  = var(counts,  0, 1);
