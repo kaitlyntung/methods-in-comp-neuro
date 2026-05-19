@@ -295,27 +295,3 @@ annotation('textbox', [0.01, 0.01, 0.3, 0.06], ...
 grid on;
 axis equal;
 view(35, 25);
-
-%%
-% for m = 1:numel(methods)
-%     switch methods{m}
-%         case 'none'
-%             X_norm = X_psth;
-%         case 'zscore'
-%             mu    = mean(X_psth, 2);
-%             sigma = std(X_psth, 0, 2);
-%             sigma(sigma == 0) = 1;
-%             X_norm = (X_psth - mu) ./ sigma;
-%         case 'soft'
-%             fr_range = max(X_psth, [], 2) - min(X_psth, [], 2);
-%             X_norm   = X_psth ./ (fr_range + soft_norm_alpha);
-%     end
-% 
-%     % Mean center across time
-%     X_norm = X_norm - mean(X_norm, 2);
-% 
-%     % PCA
-%     [~, score, ~, ~, explained] = pca(X_norm');
-%     all_explained(m, 1:numel(explained)) = explained;
-%     all_score{m} = score;
-% end
