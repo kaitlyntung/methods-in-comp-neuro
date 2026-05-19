@@ -63,16 +63,6 @@ fprintf('%s\n', repmat('-', 1, 65));
 
 
 %% PLOT
-% =========================================================================
-% plot_classifier_results.m
-% Visualize curved vs. straight reach classification results
-% Assumes the following variables are in the workspace from the main script:
-%   obs_acc      [n_methods x n_windows]
-%   perm_acc     [n_methods x n_windows x n_perm]
-%   p_values     [n_methods x n_windows]
-%   method_labels, window_labels, n_methods, n_windows
-% =========================================================================
-
 clr.svm    = [0.20, 0.45, 0.75];   % blue
 clr.logreg = [0.85, 0.33, 0.10];   % orange
 method_colors = {clr.svm, clr.logreg};
@@ -80,9 +70,6 @@ method_colors = {clr.svm, clr.logreg};
 chance_level  = 0.50;
 alpha_level   = 0.05;
 
-% -------------------------------------------------------------------------
-% Figure 1 – Accuracy comparison across methods & windows
-% -------------------------------------------------------------------------
 figure('Name', 'Accuracy Comparison', 'Color', 'w', ...
        'Position', [100, 100, 560, 420]);
 
