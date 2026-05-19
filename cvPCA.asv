@@ -1,0 +1,185 @@
+conditionIDs = [R.conditionID];
+straight_idx = mod(conditionIDs, 3) == 1;
+curved_idx = mod(conditionIDs, 3) == 2;
+straight_trials = find(straight_idx);
+curved_trials = find(curved_idx);
+
+pre_window = 500;
+post_window = 1500;
+bin_size = 20;
+time_bins = -pre_window : bin_size : post_window;
+bin_centers = time_bins(1:end-1) + bin_size/2;
+n_bins = numel(bin_centers);
+n_units = numel(R(1).unit);
+
+onset_align = [R.moveOnsetTime];
+all_trials  = [straight_trials(:); curved_trials(:)];
+n_trials    = numel(all_trials);
+
+firing_rates = nan(n_trials, n_units, n_bins);
+for t = 1:n_trials
+    tr = all_trials(t);
+    t0 = onset_align(tr);
+    for u = 1:n_units
+        spike_times = R(tr).unit(u).spikeTimes - t0;
+        counts = histcounts(spike_times, time_bins);
+        firing_rates(t, u, :) = counts / (bin_size / 1000);
+    end
+end
+disp('firing rates created')
+
+%% ---- CV parameters ---------------------------------------------------
+k = 5;    % observation folds (trial-level)
+max_dims      = min(40, n_units - 1);  % max PCs to sweep
+soft_norm_alpha = 5;
+
+n_straight = numel(straight_trials);
+n_curved   = numel(curved_trials);
+cond_labels = [ones(n_straight, 1); 2*ones(n_curved, 1)];
+
+normalization_labels = {'No Normalization', 'Z-Score', 'Soft Normalization'};
+methods       = {'none', 'zscore', 'soft'};
+colors_method = [0 0 0; 0 0 0.8; 0.8 0 0];
+
+%% ---- Neuron split: X neurons and Y neurons ---------------------------
+% Split neurons 50/50 into training variables (X) and held-out variables (Y).
+% Same split used for all methods and all folds so results are comparable.
+rng(42);
+neuron_perm = randperm(n_units);
+n_X = floor(n_units / 2);
+x_neurons = neuron_perm(1:n_X);
+y_neurons = neuron_perm(n_X+1:end);
+n_Y = numel(y_neurons);
+
+fprintf('Neuron split: %d X neurons, %d Y neurons\n', n_X, n_Y);
+
+%% ---- Stratified trial-level k-fold indices ---------------------------
+fold_ids = zeros(n_trials, 1);
+rng(42);
+for cond = 1:2
+    cond_mask  = find(cond_labels == cond);
+    n_cond     = numel(cond_mask);
+    perm       = randperm(n_cond);
+    cond_folds = mod(0:n_cond-1, k) + 1;
+    cond_folds = cond_folds(perm);
+    fold_ids(cond_mask) = cond_folds;
+end
+
+%% ---- Double CV loop --------------------------------------------------
+% cv_loss(method, fold, d) = MSE on held-out Y neurons, held-out trials
+cv_loss = nan(numel(methods), k, max_dims);
+
+for m = 1:numel(methods)
+    fprintf('\nMethod: %s\n', normalization_labels{m});
+
+    for fold = 1:k
+        train_idx = find(fold_ids ~= fold);
+        test_idx  = find(fold_ids == fold);
+        n_train   = numel(train_idx);
+        n_test    = numel(test_idx);
+
+        % Slice and reshape: [nTrials x nUnits x nBins] -> [nTrials*nBins x nUnits]
+        fr_train_2d = reshape(permute(firing_rates(train_idx,:,:), [1 3 2]), n_train*n_bins, n_units);
+        fr_test_2d  = reshape(permute(firing_rates(test_idx, :,:), [1 3 2]), n_test*n_bins,  n_units);
+
+        % Separate X and Y neurons
+        X_train = fr_train_2d(:, x_neurons);   % [nTrain*nBins x nX]
+        Y_train = fr_train_2d(:, y_neurons);   % [nTrain*nBins x nY]
+        X_test  = fr_test_2d(:,  x_neurons);   % [nTest*nBins  x nX]
+        Y_test  = fr_test_2d(:,  y_neurons);   % [nTest*nBins  x nY]
+
+        % --- Normalize X using TRAIN stats only -----------------------
+        switch methods{m}
+            case 'none'
+                X_train_norm = X_train;
+                X_test_norm  = X_test;
+
+            case 'zscore'
+                mu_x  = mean(X_train, 1);
+                sig_x = std(X_train,  0, 1);
+                sig_x(sig_x == 0) = 1;
+                X_train_norm = (X_train - mu_x) ./ sig_x;
+                X_test_norm  = (X_test  - mu_x) ./ sig_x;
+
+            case 'soft'
+                rng_x        = max(X_train, [], 1) - min(X_train, [], 1);
+                X_train_norm = X_train ./ (rng_x + soft_norm_alpha);
+                X_test_norm  = X_test  ./ (rng_x + soft_norm_alpha);
+        end
+
+        % --- Fit PCA on X_train only ----------------------------------
+        % coeff:    [nX x D_actual] — PC axes learned from training X only
+        % mu_X:     [1  x nX]      — column means of X_train_norm
+        % score_train: [nTrain*nBins x D_actual]
+        [coeff, score_train, ~, ~, ~, mu_X] = pca(X_train_norm, 'NumComponents', max_dims);
+        D_actual = size(coeff, 2);
+
+        % Center Y with training mean (for beta regression)
+        mu_Y      = mean(Y_train, 1);       % [1 x nY]
+        Y_train_c = Y_train - mu_Y;
+
+        % Center test X with TRAIN mean before projecting
+        X_test_c  = X_test_norm - mu_X;
+
+        % --- Sweep dimensionality -------------------------------------
+        for d = 1:min(D_actual, max_dims)
+            S_train = score_train(:, 1:d);          % [nTrain*nBins x d]
+
+            % Fit linear map from low-D state to Y (frozen at test time)
+            % beta: [d x nY]
+            beta = S_train \ Y_train_c;
+
+            % Project test X into the TRAINING PC space
+            S_test = X_test_c * coeff(:, 1:d);     % [nTest*nBins x d]
+
+            % Predict Y_test using the frozen coeff and frozen beta
+            Y_hat = S_test * beta + mu_Y;
+
+            % Error on held-out trials AND held-out neurons
+            cv_loss(m, fold, d) = mean((Y_test - Y_hat).^2, 'all');
+        end
+
+        fprintf('  Fold %d/%d done\n', fold, k);
+    end
+end
+
+%% ---- Average across folds -------------------------------------------
+mean_loss = squeeze(mean(cv_loss, 2));          % [nMethods x max_dims]
+sem_loss  = squeeze(std(cv_loss, 0, 2) / sqrt(k));
+
+[~, best_D] = min(mean_loss, [], 2);
+for m = 1:numel(methods)
+    fprintf('%s: optimal D = %d\n', normalization_labels{m}, best_D(m));
+end
+
+%% ---- Plot: raw CV loss ----------------------------------------------
+figure('Name', 'CV Loss (raw MSE)', 'Position', [100 100 700 420]);
+hold on;
+h = gobjects(numel(methods), 1);
+for m = 1:numel(methods)
+    errorbar(1:max_dims, mean_loss(m,:), sem_loss(m,:), '-o', ...
+        'Color', colors_method(m,:), 'LineWidth', 2, 'MarkerSize', 4, 'CapSize', 3);
+    h(m) = plot(nan, nan, '-o', 'Color', colors_method(m,:), 'LineWidth', 2);
+    xline(best_D(m), '--', 'Color', colors_method(m,:), 'Alpha', 0.35, 'LineWidth', 1);
+end
+xlabel('Number of PCs (D)');
+ylabel('Mean squared error on Y_{test}');
+title('Double CV-PCA: prediction error vs dimensionality');
+legend(h, normalization_labels, 'Location', 'northeast');
+grid on; box off; set(gca, 'FontSize', 12);
+
+%% ---- Plot: normalized CV loss (0-1) ---------------------------------
+figure('Name', 'Normalized CV Loss', 'Position', [100 100 700 420]);
+hold on;
+for m = 1:numel(methods)
+    loss      = mean_loss(m,:);
+    loss_norm = (loss - min(loss)) / (max(loss) - min(loss));
+    plot(1:max_dims, loss_norm, '-o', ...
+        'Color', colors_method(m,:), 'LineWidth', 2);
+    xline(best_D(m), '--', 'Color', colors_method(m,:), 'Alpha', 0.35, 'LineWidth', 1);
+end
+xlabel('Number of PCs (D)');
+ylabel('Normalized prediction error (0–1)');
+title('Double CV-PCA loss (normalized)');
+legend(normalization_labels, 'Location', 'northeast');
+grid on; box off; set(gca, 'FontSize', 12);

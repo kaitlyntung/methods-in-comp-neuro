@@ -1,12 +1,7 @@
-% We will classify curved vs. straight reaches based on neural data from 
-% the delay and movement period separately using SVM and logistic 
-% regression to assess when kinematic information is encoded in M1.
 
-% We will assess the significance of our classifier using a Monte Carlo 
-% shuffle test, where we shuffle curved vs straight trial labels 1000 times
-% to generate a null distribution and compute a p-value for each
-% method/time-window combination.
-
+%% =========================================================================
+% DEFINE STRAIGHT VS CURVED TRIALS
+% =========================================================================
 
 conditionIDs = [R.conditionID];
 
@@ -16,6 +11,10 @@ curved_idx   = mod(conditionIDs, 3) == 2;
 straight_trials = find(straight_idx);
 curved_trials   = find(curved_idx);
 
+%% =========================================================================
+% DEFINE TIME WINDOWS
+% =========================================================================
+
 windows.delay    = [-500, 0];
 windows.movement = [0, 500];
 
@@ -24,6 +23,9 @@ window_names  = {'delay', 'movement'};
 
 n_windows = numel(window_labels);
 
+%% =========================================================================
+% DEFINE TIME BINS
+% =========================================================================
 
 bin_size = 50;
 
@@ -39,6 +41,10 @@ movement_bins = ...
     bin_centers >= 0 & ...
     bin_centers < 500;
 
+%% =========================================================================
+% DEFINE CLASSIFIERS
+% =========================================================================
+
 methods = {'svm', 'logreg'};
 
 method_labels = { ...
@@ -47,6 +53,16 @@ method_labels = { ...
 
 n_methods = numel(methods);
 
+%% =========================================================================
+% DEFINE REACH DIRECTION LABELS
+% =========================================================================
+%
+% Convert target locations into direction categories.
+%
+% Example:
+%   -180°, -135°, -90°, ...
+%
+% =========================================================================
 
 targetXY = reshape([R.targetXY], 2, [])';
 
@@ -60,6 +76,7 @@ uniqueGroups = unique(angleGroups);
 
 nGroups = numel(uniqueGroups);
 
+% Integer labels for classifiers
 dir_labels_all = nan(numel(R),1);
 
 for g = 1:nGroups
@@ -68,9 +85,15 @@ for g = 1:nGroups
 
 end
 
+%% =========================================================================
+% CHANCE LEVEL
+% =========================================================================
 
 chance_level_dir = 1 / nGroups;
 
+%% =========================================================================
+% DEFINE CONDITIONS
+% =========================================================================
 
 barrier_conditions = { ...
     straight_trials, ...
@@ -82,10 +105,16 @@ barrier_labels_str = { ...
 
 n_barrier = numel(barrier_conditions);
 
+%% =========================================================================
+% ANALYSIS SETTINGS
+% =========================================================================
 
 n_perm     = 1000;
 n_cv_folds = 5;
 
+%% =========================================================================
+% PREALLOCATE STORAGE
+% =========================================================================
 
 obs_acc_dir  = nan(n_methods, n_windows, n_barrier);
 
@@ -97,15 +126,25 @@ pred_store = cell(n_methods, n_windows, n_barrier);
 
 true_store = cell(n_methods, n_windows, n_barrier);
 
+%% =========================================================================
+% MAIN ANALYSIS LOOP
+% =========================================================================
 
 for b = 1:n_barrier
 
+    %% --------------------------------------------------------------------
+    % Select trials for this condition
+    % ---------------------------------------------------------------------
 
     trial_ids = barrier_conditions{b};
 
     dir_labels = dir_labels_all(trial_ids);
 
     n_tr = numel(trial_ids);
+
+    %% --------------------------------------------------------------------
+    % Extract firing rates for THIS subset of trials
+    % ---------------------------------------------------------------------
 
     X_delay_b = squeeze(mean( ...
         firing_rates(trial_ids,:,delay_bins), 3));
@@ -117,15 +156,32 @@ for b = 1:n_barrier
         X_delay_b, ...
         X_movement_b};
 
-  
+    %% --------------------------------------------------------------------
+    % CREATE FIXED CROSS-VALIDATION PARTITION
+    %
+    % IMPORTANT:
+    % SAME partition reused for:
+    %   - observed decoding
+    %   - all permutations
+    %
+    % ---------------------------------------------------------------------
+
     cv = cvpartition( ...
         dir_labels, ...
         'KFold', n_cv_folds, ...
         'Stratify', true);
 
+    %% --------------------------------------------------------------------
+    % Loop over time windows
+    % ---------------------------------------------------------------------
+
     for w = 1:n_windows
 
         X = window_features_b{w};
+
+        %% ----------------------------------------------------------------
+        % Loop over classifier methods
+        % -----------------------------------------------------------------
 
         for m = 1:n_methods
 
@@ -136,7 +192,10 @@ for b = 1:n_barrier
                 barrier_labels_str{b});
             fprintf('========================================\n');
 
-   
+            %% ------------------------------------------------------------
+            % OBSERVED DECODING
+            % -------------------------------------------------------------
+
             [pred, true_lab] = classify_kfold_predictions( ...
                 X, ...
                 dir_labels, ...
@@ -150,6 +209,20 @@ for b = 1:n_barrier
 
             fprintf('Observed accuracy = %.3f\n', ...
                 obs_acc_dir(m,w,b));
+
+            %% ------------------------------------------------------------
+            % MONTE CARLO PERMUTATION TEST
+            % -------------------------------------------------------------
+            %
+            % Shuffle labels while keeping:
+            %   - neural data fixed
+            %   - CV folds fixed
+            %
+            % This estimates the NULL distribution:
+            %
+            % "What accuracies occur by chance?"
+            %
+            % -------------------------------------------------------------
 
             method_m = methods{m};
 
@@ -169,8 +242,24 @@ for b = 1:n_barrier
 
             end
 
+            %% ------------------------------------------------------------
+            % Store null distribution
+            % -------------------------------------------------------------
 
             perm_acc_dir(m,w,b,:) = perm_acc_tmp;
+
+            %% ------------------------------------------------------------
+            % COMPUTE P-VALUE
+            % -------------------------------------------------------------
+            %
+            % Monte Carlo permutation p-value:
+            %
+            % p =
+            % (# permuted accuracies >= observed + 1)
+            % ---------------------------------------
+            %           (n_perm + 1)
+            %
+            % -------------------------------------------------------------
 
             p_values_dir(m,w,b) = ...
                 (sum(perm_acc_tmp >= obs_acc_dir(m,w,b)) + 1) ...
@@ -182,6 +271,10 @@ for b = 1:n_barrier
         end
     end
 end
+
+%% =========================================================================
+% RESULTS TABLE
+% =========================================================================
 
 fprintf('\n%s\n', repmat('-',1,75));
 
@@ -226,7 +319,9 @@ end
 
 fprintf('%s\n', repmat('-',1,75));
 
-%% Plotting
+%% =========================================================================
+% CONFUSION MATRIX PLOTS
+% =========================================================================
 
 angle_strs = arrayfun( ...
     @(a) sprintf('%d°', a), ...
@@ -245,12 +340,17 @@ for b = 1:n_barrier
     for m = 1:n_methods
 
         for w = 1:n_windows
+
             panel = panel + 1;
 
             ax = subplot(n_methods, n_windows, panel);
 
             pred     = pred_store{m,w,b};
             true_lab = true_store{m,w,b};
+
+            %% ------------------------------------------------------------
+            % Compute confusion matrix
+            % -------------------------------------------------------------
 
             C = zeros(nGroups, nGroups);
 
@@ -264,7 +364,16 @@ for b = 1:n_barrier
                 end
             end
 
+            %% ------------------------------------------------------------
+            % Row-normalize
+            % -------------------------------------------------------------
+
             C_norm = C ./ sum(C,2);
+
+            %% ------------------------------------------------------------
+            % Plot matrix
+            % -------------------------------------------------------------
+
             imagesc(ax, C_norm);
 
             colormap(ax, 'sky');
@@ -272,6 +381,11 @@ for b = 1:n_barrier
             clim(ax, [0 1]);
 
             hold(ax, 'on');
+
+            %% ------------------------------------------------------------
+            % Add percentages inside cells
+            % -------------------------------------------------------------
+
             for i = 1:nGroups
 
                 for j = 1:nGroups
@@ -537,6 +651,11 @@ function [pred_all, true_all] = classify_kfold_predictions( ...
 
     end
 end
+
+%% =========================================================================
+% HELPER FUNCTION:
+% SIGNIFICANCE LABELS
+% =========================================================================
 
 function label = significance_label(p)
 

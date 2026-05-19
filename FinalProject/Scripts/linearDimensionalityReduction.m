@@ -117,6 +117,18 @@ for m = 1:numel(methods)
     end
 
     cv_loss(m, :) = mean(fold_loss, 1);
+    % X_full = X_norm' - mean(X_norm', 1);
+    % [~, score_full] = pca(X_full);
+    % all_score{m} = score_full;
+    X_full = X_norm';  % [n_cols x n_units]
+    X_full = X_full - mean(X_full, 1);  % mean-center across columns
+
+    [coeff_full, score_full] = pca(X_full);  % score_full: [n_cols x n_units]
+    all_score{m} = score_full;
+
+    % Also store explained variance if you want it
+    latent = var(score_full);
+    all_explained(m, 1:numel(latent)) = latent / sum(latent) * 100;
 end
 
 %% Plot

@@ -1,0 +1,73 @@
+% We will do cross-validated PCA on M1 activity to determine the true low 
+% dimensional structure of the neuron's responses, comparing dimensionality 
+% under no normalization, z-scoring, and soft normalization.
+
+conditionIDs = [R.conditionID];
+straight_idx = mod(conditionIDs, 3) == 1;
+curved_idx = mod(conditionIDs, 3) == 2;
+
+straight_trials = find(straight_idx);
+curved_trials = find(curved_idx);
+
+pre_window = 150;
+post_window = 50;
+bin_size = 20;
+time_bins = -pre_window : bin_size : post_window;
+bin_centers = time_bins(1:end-1) + bin_size/2;
+n_bins = numel(bin_centers);
+n_units = numel(R(1).unit);
+
+onset_align = [R.moveOnsetTime];
+all_trials  = [straight_trials(:); curved_trials(:)];
+n_trials = numel(all_trials);
+ 
+firing_rates = nan(n_trials, n_units, n_bins);
+for t = 1:n_trials
+    tr  = all_trials(t);
+    t0  = onset_align(tr);
+    for u = 1:n_units
+        spike_times = R(tr).unit(u).spikeTimes - t0;
+        counts = histcounts(spike_times, time_bins);
+        firing_rates(t, u, :) = counts / (bin_size / 1000);
+    end
+end
+disp('Firing rates created.')
+
+neuron_perm = randperm(n_units);
+n_X = floor(n_units / 2);
+x_neurons = neuron_perm(1:n_X);
+y_neurons = neuron_perm(n_X+1:end);
+n_Y = numel(y_neurons);
+
+k = 5;
+n_straight = numel(straight_trials);
+n_curved = numel(curved_trials);
+cond_labels = [ones(n_straight, 1); 2*ones(n_curved, 1)];
+
+fold_ids = zeros(n_trials, 1);
+for cond = 1:2
+    cond_mask = find(cond_labels == cond);
+    n_cond = numel(cond_mask);
+    perm = randperm(n_cond);
+    cond_folds = mod(0:n_cond - 1, k) + 1;
+    cond_folds =  cond_folds(perm);
+    fold_ids(cond_mask) = cond_folds;
+end
+
+for fold = 1:k
+    train_idx = find(fold_ids ~= fold);
+    test_idx  = find(fold_ids == fold);
+
+    n_train = numel(train_idx);
+    n_test = numel(test_idx);
+
+    X_train_3d = firing_rates(train_idx, x_neurons, :);
+    Y_train_3d = firing_rates(train_idx, y_neurons, :);
+    X_test_3d  = firing_rates(test_idx,  x_neurons, :);
+    Y_test_3d  = firing_rates(test_idx,  y_neurons, :);
+
+    X_train = reshape(permute(X_train_3d, [1 3 2]), n_train*n_bins, n_X);
+    Y_train = reshape(permute(Y_train_3d, [1 3 2]), n_train*n_bins, n_Y);
+    X_test  = reshape(permute(X_test_3d,  [1 3 2]), n_test*n_bins,  n_X);
+    Y_test  = reshape(permute(Y_test_3d,  [1 3 2]), n_test*n_bins,  n_Y);
+end
