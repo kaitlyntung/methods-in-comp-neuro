@@ -5,24 +5,6 @@
 % actually did the curved paths and not just the straight length ones. 
 
 function curvatureMetric(R)
-% curvatureMetric  Compute path curvature ratios per trial, plot their
-%   distributions for straight vs. curved conditions, and run a bootstrap
-%   analysis on the difference in means with 95% CIs.
-%
-%   curvatureMetric(R)
-%
-%   Input:
-%     R  - Trial data struct array. Each element R(tr) must contain:
-%            .conditionID    - Scalar condition identifier
-%            .moveOnsetTime  - Movement onset timestamp (ms)
-%            .moveEndsTime   - Movement end timestamp (ms)
-%            .HAND.times     - Hand position sample timestamps (ms)
-%            .HAND.X         - Hand X positions
-%            .HAND.Y         - Hand Y positions
-
-% -------------------------------------------------------------------------
-% Condition indexing
-% -------------------------------------------------------------------------
 num_trials   = numel(R);
 conditionIDs = [R.conditionID];
 straight_idx = mod(conditionIDs, 3) == 1;
@@ -31,9 +13,6 @@ curved_idx   = mod(conditionIDs, 3) == 2;
 moveOnsetTimes = [R.moveOnsetTime];
 moveEndsTimes  = [R.moveEndsTime];
 
-% -------------------------------------------------------------------------
-% Compute curvature ratio per trial
-% -------------------------------------------------------------------------
 curvature = nan(1, num_trials);
 
 for trial = 1:num_trials
@@ -55,16 +34,8 @@ for trial = 1:num_trials
 
     curvature(trial) = total_path_length / straight_line_dist;
 end
-
-% -------------------------------------------------------------------------
-% Split by condition, drop NaNs
-% -------------------------------------------------------------------------
 straight_curv = curvature(straight_idx & ~isnan(curvature));
 curved_curv   = curvature(curved_idx   & ~isnan(curvature));
-
-% -------------------------------------------------------------------------
-% Figure 1: Curvature distributions
-% -------------------------------------------------------------------------
 figure;
 
 subplot(1, 2, 1);
@@ -84,10 +55,6 @@ title('Barriers');
 xlim([0.5 3]);
 
 sgtitle('Path Curvature Distribution by Condition');
-
-% -------------------------------------------------------------------------
-% Bootstrap
-% -------------------------------------------------------------------------
 n_bootstrap = 10000;
 
 straight_random_inds = randi(numel(straight_curv), numel(straight_curv), n_bootstrap);
@@ -101,10 +68,6 @@ straight_ci   = prctile(straight_bootstrap, [2.5, 97.5]);
 
 curved_mean = mean(curved_curv);
 curved_ci   = prctile(curved_bootstrap, [2.5, 97.5]);
-
-% -------------------------------------------------------------------------
-% Figure 2: Bootstrap distributions with 95% CIs
-% -------------------------------------------------------------------------
 figure;
 hold on;
 
@@ -131,4 +94,4 @@ xlabel('Mean Curvature Ratio');
 ylabel('Proportion of Bootstrap Samples');
 title('Bootstrap Mean Distributions with 95% CIs');
 
-end % curvatureMetric
+end 
