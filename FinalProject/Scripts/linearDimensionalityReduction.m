@@ -2,25 +2,39 @@
 % dimensional structure of the neuron's responses, comparing dimensionality 
 % under no normalization, z-scoring, and soft normalization.
 
-conditionIDs = [R.conditionID];
-straight_idx = mod(conditionIDs, 3) == 1;
-curved_idx = mod(conditionIDs, 3) == 2;
+function results = linearDimensionalityReduction(R, varargin)
+p = inputParser;
+addParameter(p, 'PreWindow',  150, @isnumeric);
+addParameter(p, 'PostWindow', 50,  @isnumeric);
+addParameter(p, 'BinSize',    20,  @isnumeric);
+addParameter(p, 'nFolds',     5,   @isnumeric);
+addParameter(p, 'SoftNorm',   5,   @isnumeric);
+parse(p, varargin{:});
+opt = p.Results;
 
-straight_trials = find(straight_idx);
-curved_trials = find(curved_idx);
+pre_window  = opt.PreWindow;
+post_window = opt.PostWindow;
+bin_size    = opt.BinSize;
+k           = opt.nFolds;
+soft_norm   = opt.SoftNorm;
 
-pre_window = 150;
-post_window = 50;
-bin_size = 20;
-time_bins = -pre_window : bin_size : post_window;
+% ── Index straight vs curved trials ──────────────────────────────────────
+conditionIDs    = [R.conditionID];
+straight_trials = find(mod(conditionIDs, 3) == 1);
+curved_trials   = find(mod(conditionIDs, 3) == 2);
+all_trials      = [straight_trials(:); curved_trials(:)];
+n_trials        = numel(all_trials);
+n_units         = numel(R(1).unit);
+n_straight      = numel(straight_trials);
+n_curved        = numel(curved_trials);
+
+% ── Time bins ─────────────────────────────────────────────────────────────
+time_bins   = -pre_window : bin_size : post_window;
 bin_centers = time_bins(1:end-1) + bin_size/2;
-n_bins = numel(bin_centers);
-n_units = numel(R(1).unit);
+n_bins      = numel(bin_centers);
 
-onset_align = [R.moveOnsetTime];
-all_trials = [straight_trials(:); curved_trials(:)];
-n_trials = numel(all_trials);
-
+% ── Build firing-rate tensor [trials x units x bins] ─────────────────────
+onset_align  = [R.moveOnsetTime];
 firing_rates = nan(n_trials, n_units, n_bins);
 
 for t = 1:n_trials
@@ -28,268 +42,193 @@ for t = 1:n_trials
     t0 = onset_align(tr);
     for u = 1:n_units
         spike_times = R(tr).unit(u).spikeTimes - t0;
-        counts = histcounts(spike_times, time_bins);
+        counts      = histcounts(spike_times, time_bins);
         firing_rates(t, u, :) = counts / (bin_size / 1000);
     end
 end
-disp('firing rates created')
+disp('Firing rates created.');
 
+% ── Condition-averaged firing rates ──────────────────────────────────────
+fr_straight = squeeze(mean(firing_rates(1:n_straight, :, :), 1));           % [n_units x n_bins]
+fr_curved   = squeeze(mean(firing_rates(n_straight+1:end, :, :), 1));
+fr_cond_avg = permute(cat(3, fr_straight', fr_curved'), [3 1 2]);            % [2 x n_bins x n_units]
+n_conds     = 2;
 
-n_straight = numel(straight_trials);
-n_curved   = numel(curved_trials);
+% ── CV fold assignment (stratified by condition) ──────────────────────────
+cond_labels  = [ones(n_straight, 1); 2*ones(n_curved, 1)];
+fold_ids_trials = zeros(n_trials, 1);
+for cond = 1:2
+    cond_mask = find(cond_labels == cond);
+    n_cond    = numel(cond_mask);
+    perm      = randperm(n_cond);
+    cond_folds = mod(0:n_cond-1, k) + 1;
+    fold_ids_trials(cond_mask) = cond_folds(perm);
+end
 
-% Average firing rates across trials per condition [units x bins]
-psth_straight = squeeze(mean(firing_rates(1:n_straight, :, :), 1));
-psth_curved   = squeeze(mean(firing_rates(n_straight+1:end, :, :), 1));
-
-% Stack conditions along time: [units x (2*bins)]
-X_psth = [psth_straight, psth_curved];
-
+% ── Method definitions ────────────────────────────────────────────────────
+methods              = {'none', 'zscore', 'soft'};
 normalization_labels = {'No Normalization', 'Z-Score', 'Soft Normalization'};
-methods = {'none', 'zscore', 'soft'};
-soft_norm_alpha = 5;
-n_plot = 10;
-colors_method = [0 0 0; 0 0 0.8; 0.8 0 0];  % black, blue, red
+colors_method        = [0 0 0; 0 0 1; 1 0 0];
+n_methods            = numel(methods);
 
-% Store results for each method
-all_explained = nan(numel(methods), size(X_psth, 2));
-all_score     = cell(numel(methods), 1);
+n_X_fixed   = floor(n_units / 2);
+max_dims    = n_X_fixed - 1;
+n_plot_dims = min(n_X_fixed - 1, 2*n_bins - 1);
 
-n_folds = 5;
-max_dims = 20;
+% ── Pre-allocate outputs ──────────────────────────────────────────────────
+cv_loss     = nan(n_methods, k, k, max_dims);
+all_explained = nan(n_methods, n_plot_dims);
+all_score   = cell(n_methods, 1);
+all_coeff   = cell(n_methods, 1);
 
-% X_psth is [n_units x (2*n_bins)] — straight and curved stacked
-% CV splits along the time/condition columns (observations for PCA)
-n_cols = size(X_psth, 2);  % 2*n_bins columns
+% ── Main loop over normalization methods ──────────────────────────────────
+for m = 1:n_methods
 
-cv_loss = nan(numel(methods), max_dims);
+    % Cross-validated PCA loss
+    for fold_r = 1:k
+        train_idx = find(fold_ids_trials ~= fold_r);
+        test_idx  = find(fold_ids_trials == fold_r);
+        n_train   = numel(train_idx);
+        n_test    = numel(test_idx);
 
-for m = 1:numel(methods)
-    switch methods{m}
-        case 'none'
-            X_norm = X_psth;
-        case 'zscore'
-            mu    = mean(X_psth, 2);
-            sigma = std(X_psth, 0, 2);
-            sigma(sigma == 0) = 1;
-            X_norm = (X_psth - mu) ./ sigma;
-        case 'soft'
-            fr_range = max(X_psth, [], 2) - min(X_psth, [], 2);
-            X_norm   = X_psth ./ (fr_range + soft_norm_alpha);
-    end
-    X_norm = X_norm - mean(X_norm, 2);
+        for fold_c = 1:k
+            neuron_perm = randperm(n_units);
+            x_neurons   = neuron_perm(1:n_X_fixed);
+            y_neurons   = neuron_perm(n_X_fixed+1:end);
+            n_Y         = numel(y_neurons);
 
-    % X_norm is [n_units x n_cols]
-    % PCA convention: observations are columns (time points), features are units
-    % So we pass X_norm' [n_cols x n_units] to pca()
+            X_train = reshape(permute(firing_rates(train_idx, x_neurons, :), [1 3 2]), n_train*n_bins, n_X_fixed);
+            Y_train = reshape(permute(firing_rates(train_idx, y_neurons, :), [1 3 2]), n_train*n_bins, n_Y);
+            X_test  = reshape(permute(firing_rates(test_idx,  x_neurons, :), [1 3 2]), n_test*n_bins,  n_X_fixed);
+            Y_test  = reshape(permute(firing_rates(test_idx,  y_neurons, :), [1 3 2]), n_test*n_bins,  n_Y);
 
-    fold_loss = nan(n_folds, max_dims);
+            [X_train_n, X_test_n] = ldr_normalize(X_train, X_test, methods{m}, soft_norm);
 
-    % Build k-fold split over columns (time points)
-    idx = randperm(n_cols);
-    cv_idx = zeros(n_cols, 1);
-    fold_size = floor(n_cols / n_folds);
-    for f = 1:n_folds
-        cv_idx(idx((f-1)*fold_size + 1 : f*fold_size)) = f;
-    end
-    cv_idx(cv_idx == 0) = n_folds;
+            mu_X      = mean(X_train_n, 1);
+            X_train_c = X_train_n - mu_X;
+            X_test_c  = X_test_n  - mu_X;
+            mu_Y      = mean(Y_train, 1);
+            Y_train_c = Y_train - mu_Y;
 
-    for f = 1:n_folds
-        test_mask  = (cv_idx == f);
-        train_mask = ~test_mask;
+            [coeff, score, ~] = pca(X_train_c, 'NumComponents', max_dims);
 
-        X_train = X_norm(:, train_mask)';  % [train_cols x n_units]
-        X_test  = X_norm(:, test_mask)';   % [test_cols  x n_units]
-
-        train_mean = mean(X_train, 1);
-        X_train = X_train - train_mean;
-        X_test  = X_test  - train_mean;
-
-        coeff = pca(X_train);  % [n_units x n_units]
-
-        for k = 1:max_dims
-            W = coeff(:, 1:k);
-            X_recon = (X_test * W) * W';
-            fold_loss(f, k) = mean((X_test(:) - X_recon(:)).^2);
+            for d = 1:max_dims
+                S_train      = score(:, 1:d);
+                beta         = S_train \ Y_train_c;
+                S_test       = X_test_c * coeff(:, 1:d);
+                Y_hat        = S_test * beta + mu_Y;
+                cv_loss(m, fold_r, fold_c, d) = mean((Y_test - Y_hat).^2, 'all');
+            end
         end
     end
 
-    cv_loss(m, :) = mean(fold_loss, 1);
-    % X_full = X_norm' - mean(X_norm', 1);
-    % [~, score_full] = pca(X_full);
-    % all_score{m} = score_full;
-    X_full = X_norm';  % [n_cols x n_units]
-    X_full = X_full - mean(X_full, 1);  % mean-center across columns
+    % Full-data PCA for visualization
+    FR_all = reshape(permute(firing_rates, [1 3 2]), n_trials*n_bins, n_units);
+    FR_all_tmp = FR_all;
+    [FR_all_n, ~] = ldr_normalize(FR_all_tmp, FR_all_tmp, methods{m}, soft_norm);
 
-    [coeff_full, score_full] = pca(X_full);  % score_full: [n_cols x n_units]
-    all_score{m} = score_full;
+    FR_all_n = reshape(FR_all_n, n_trials, n_bins, n_units);
+    psth_s   = squeeze(mean(FR_all_n(1:n_straight, :, :), 1));
+    psth_c   = squeeze(mean(FR_all_n(n_straight+1:end, :, :), 1));
 
-    % Also store explained variance if you want it
-    latent = var(score_full);
-    all_explained(m, 1:numel(latent)) = latent / sum(latent) * 100;
+    X_plot_final = [psth_s; psth_c];
+    X_plot_final = X_plot_final - mean(X_plot_final, 1);
+
+    [coeff_full, score_full, ~, ~, explained] = pca(X_plot_final);
+    all_explained(m, :) = explained(1:n_plot_dims)';
+    all_score{m}        = score_full;
+    all_coeff{m}        = coeff_full;
 end
 
-%% Plot
-figure; hold on;
-for m = 1:numel(methods)
-    loss = cv_loss(m,:);
-    loss_norm = (loss - min(loss)) / (max(loss) - min(loss));
-    plot(1:max_dims, loss_norm, '-o', ...
-        'Color', colors_method(m,:), 'LineWidth', 2);
-end
-xlabel('Number of PCs (k)');
-ylabel('Normalized Reconstruction Error (0-1)');
-title('Cross-Validated PCA Loss by Dimensionality (Normalized)');
-legend(normalization_labels, 'Location', 'northeast');
-grid on;
-%% Scree plot
-figure;
-hold on;
-for m = 1:numel(methods)
-    plot(1:n_plot, all_explained(m, 1:n_plot), '-o', ...
-        'Color', colors_method(m,:), 'LineWidth', 2);
-end
-xlabel('Principal Component');
-ylabel('Variance Explained (%)');
-title('Scree Plot');
-legend(normalization_labels, 'Location', 'northeast');
+mean_loss = squeeze(mean(cv_loss, [2 3]));
+
+% ── Plots ─────────────────────────────────────────────────────────────────
+ldr_plot_cv_loss(mean_loss, max_dims, n_methods, normalization_labels, colors_method);
+ldr_plot_scree(all_explained, n_plot_dims, n_methods, normalization_labels, colors_method);
+ldr_plot_cumulative(all_explained, n_plot_dims, n_methods, normalization_labels, colors_method);
+
+% ── Pack results ──────────────────────────────────────────────────────────
+results.cv_loss     = cv_loss;
+results.mean_loss   = mean_loss;
+results.explained   = all_explained;
+results.score       = all_score;
+results.coeff       = all_coeff;
+results.bin_centers = bin_centers;
+results.params      = opt;
+
+end % ── end main function ──────────────────────────────────────────────────
 
 
-%% Cumulative variance
-figure;
-hold on;
-for m = 1:numel(methods)
-    cum_exp = cumsum(all_explained(m, :));
-    plot(1:n_plot, cum_exp(1:n_plot), '-o', ...
-        'Color', colors_method(m,:), 'LineWidth', 2);
-end
-yline(80, 'k--', 'LineWidth', 1.5, 'Label', '80%');
-yline(95, 'k:',  'LineWidth', 1.5, 'Label', '95%');
-xlabel('Number of Components');
-ylabel('Cumulative Variance Explained (%)');
-title('Cumulative Variance');
-ylim([0 100]);
-legend(normalization_labels, 'Location', 'southeast');
+% ═════════════════════════════════════════════════════════════════════════
+%  LOCAL HELPER FUNCTIONS
+% ═════════════════════════════════════════════════════════════════════════
 
-%% 2D PC trajectories over time
-figure;
-pc_colors = nebula(3);
-for m = 1:numel(methods)
-    subplot(1, 3, m);
-    hold on;
-    score = all_score{m};
-    for k = 1:3
-        pc_straight = score(1:n_bins, k);
-        pc_curved = score(n_bins+1:end, k);
-        plot(bin_centers, pc_straight, '-',  'Color', pc_colors(k,:), 'LineWidth', 2);
-        plot(bin_centers, pc_curved,   '--', 'Color', pc_colors(k,:), 'LineWidth', 2);
-    end
-    xline(0, 'k--', 'LineWidth', 1.5);
-    xlabel('Time from Movement Onset (ms)');
-    ylabel('PC Score');
-    title(normalization_labels{m});
-    if m == 1
-        legend('PC1 Straight', 'PC1 Curved', 'PC2 Straight', 'PC2 Curved', ...
-               'PC3 Straight', 'PC3 Curved', 'Location', 'best');
-    end
-end
-sgtitle('Top 3 PCs Over Time by Normalization Method');
-
-%% 3D PC trajectories by direction
-targetXY = reshape([R.targetXY], 2, [])';
-angles = atan2d(targetXY(:,2), targetXY(:,1));
-angleGroups = round(angles / 45) * 45;
-angleGroups(angleGroups == 180) = -180;
-uniqueGroups = unique(angleGroups);
-nGroups = length(uniqueGroups);
-
-all_trial_ids = 1:numel(R);
-n_all = numel(all_trial_ids);
-
-fr_all = nan(n_all, n_units, n_bins);
-for t = 1:n_all
-    tr = all_trial_ids(t);
-    t0 = onset_align(tr);
-    for u = 1:n_units
-        spike_times = R(tr).unit(u).spikeTimes - t0;
-        counts = histcounts(spike_times, time_bins);
-        fr_all(t, u, :) = counts / (bin_size / 1000);
+function [X_n, X_test_n] = ldr_normalize(X_train, X_test, method, soft_norm)
+% LDR_NORMALIZE  Apply normalization using training-set statistics.
+    switch method
+        case 'none'
+            X_n      = X_train;
+            X_test_n = X_test;
+        case 'zscore'
+            mu       = mean(X_train, 1);
+            sig      = std(X_train, 0, 1);
+            sig(sig == 0) = 1;
+            X_n      = (X_train - mu) ./ sig;
+            X_test_n = (X_test  - mu) ./ sig;
+        case 'soft'
+            rng      = max(X_train, [], 1) - min(X_train, [], 1);
+            X_n      = X_train ./ (rng + soft_norm);
+            X_test_n = X_test  ./ (rng + soft_norm);
     end
 end
 
-psth_groups = nan(n_units, nGroups * n_bins);
-group_labels = nan(n_all, 1);
-for g = 1:nGroups
-    group_mask = angleGroups == uniqueGroups(g);
-    group_labels(group_mask) = g;
-    group_trials = find(group_mask);
-    psth_groups(:, (g-1)*n_bins + (1:n_bins)) = ...
-        squeeze(mean(fr_all(group_trials, :, :), 1));
-end
 
-% using soft normalization
-fr_range  = max(psth_groups, [], 2) - min(psth_groups, [], 2);
-X_dir     = psth_groups ./ (fr_range + soft_norm_alpha);
-X_dir     = X_dir - mean(X_dir, 2);
-
-[coeff_dir, score_dir, ~, ~, explained_dir] = pca(X_dir');
-dir_colors = hsv(nGroups);
-
-figure;
-hold on;
-
-h_legend = gobjects(nGroups, 1);
-for g = 1:nGroups
-    idx = (g-1)*n_bins + (1:n_bins);
-    pc1 = score_dir(idx, 1);
-    pc2 = score_dir(idx, 2);
-    pc3 = score_dir(idx, 3);
-
-    col = dir_colors(g, :);
-
-    % Full trajectory line
-    h_legend(g) = plot3(pc1, pc2, pc3, '-', ...
-        'Color', col, 'LineWidth', 2, ...
-        'DisplayName', sprintf('%d°', uniqueGroups(g)));
-
-    % Mark movement onset (t=0 corresponds to bin closest to 0)
-    [~, onset_bin] = min(abs(bin_centers));
-    plot3(pc1(onset_bin), pc2(onset_bin), pc3(onset_bin), 'o', ...
-        'MarkerFaceColor', col, 'MarkerEdgeColor', 'k', ...
-        'MarkerSize', 8, 'HandleVisibility', 'off');
-
-    % Mark trajectory start with a triangle
-    plot3(pc1(1), pc2(1), pc3(1), '^', ...
-        'MarkerFaceColor', col, 'MarkerEdgeColor', 'k', ...
-        'MarkerSize', 7, 'HandleVisibility', 'off');
-
-    % Animate time with color gradient (early = light, late = dark)
-    n_seg = n_bins - 1;
-    alphas = linspace(0.25, 1.0, n_seg);
-    for s = 1:n_seg
-        seg_col = col .* alphas(s) + (1 - alphas(s)) * [1 1 1];
-        seg_col = min(max(seg_col, 0), 1);
-        plot3(pc1(s:s+1), pc2(s:s+1), pc3(s:s+1), '-', ...
-            'Color', seg_col, 'LineWidth', 2.5, ...
-            'HandleVisibility', 'off');
+function ldr_plot_cv_loss(mean_loss, max_dims, n_methods, norm_labels, colors)
+% LDR_PLOT_CV_LOSS  CV MSE vs number of PCs, one subplot per method.
+    figure('Color', 'w');
+    for m = 1:n_methods
+        subplot(1, n_methods, m);
+        plot(1:max_dims, mean_loss(m,:), '-o', ...
+            'Color', colors(m,:), 'LineWidth', 2);
+        xlabel('Number of PCs (k)');
+        ylabel('MSE');
+        title(norm_labels{m});
+        grid on;
     end
+    sgtitle('Cross-validated PCA loss by dimensionality');
 end
 
-% Reference point at origin (mean state)
-plot3(0, 0, 0, 'k+', 'MarkerSize', 12, 'LineWidth', 2, ...
-    'DisplayName', 'Origin');
 
-xlabel('PC1');
-ylabel('PC2');
-zlabel('PC3');
-title('3D Neural Trajectories by Reach Direction');
-legend(h_legend, 'Location', 'bestoutside', 'NumColumns', 2);
+function ldr_plot_scree(all_explained, n_plot_dims, n_methods, norm_labels, colors)
+% LDR_PLOT_SCREE  Variance explained per PC.
+    n_plot = min(20, n_plot_dims);
+    figure('Color', 'w'); hold on;
+    for m = 1:n_methods
+        plot(1:n_plot, all_explained(m, 1:n_plot), '-o', ...
+            'Color', colors(m,:), 'LineWidth', 2);
+    end
+    xlabel('Principal component');
+    ylabel('Variance explained (%)');
+    title('Scree plot');
+    legend(norm_labels, 'Location', 'northeast');
+    grid on;
+end
 
-% Add marker legend annotation
-annotation('textbox', [0.01, 0.01, 0.3, 0.06], ...
-    'String', '▲ = start   ● = movement onset', ...
-    'EdgeColor', 'none', 'FontSize', 9, 'Color', [0.4 0.4 0.4]);
 
-grid on;
-axis equal;
-view(35, 25);
+function ldr_plot_cumulative(all_explained, n_plot_dims, n_methods, norm_labels, colors)
+    n_plot = min(20, n_plot_dims);
+    figure('Color', 'w'); hold on;
+    for m = 1:n_methods
+        cum_exp = cumsum(all_explained(m, :));
+        plot(1:n_plot, cum_exp(1:n_plot), '-o', ...
+            'Color', colors(m,:), 'LineWidth', 2);
+    end
+    yline(80, 'k--', 'LineWidth', 1.5, 'Label', '80%');
+    yline(95, 'k:',  'LineWidth', 1.5, 'Label', '95%');
+    xlabel('Number of components');
+    ylabel('Cumulative variance explained (%)');
+    title('Cumulative variance');
+    ylim([0 100]);
+    legend(norm_labels, 'Location', 'southeast');
+    grid on;
+end
