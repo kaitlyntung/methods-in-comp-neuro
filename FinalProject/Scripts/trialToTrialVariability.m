@@ -5,102 +5,69 @@
 % are arguably more complex.
 
 function trialToTrialVariability(R)
-% trialToTrialVariability  Compute and plot population Fano Factor for
-%   straight vs. curved trials, aligned to target appearance, go cue, and
-%   movement onset.
-%
-%   trialToTrialVariability(R)
-%
-%   Input:
-%     R  - Trial data struct array. Each element R(tr) must contain:
-%            .conditionID      - Scalar condition identifier
-%            .targetAppearsTime - Alignment timestamp (ms)
-%            .goCueTime         - Alignment timestamp (ms)
-%            .moveOnsetTime     - Alignment timestamp (ms)
-%            .unit(u).spikeTimes - Spike times (ms) for unit u
-
-% -------------------------------------------------------------------------
-% Condition indexing
-% -------------------------------------------------------------------------
 conditionIDs = [R.conditionID];
 straight_idx = mod(conditionIDs, 3) == 1;
-curved_idx   = mod(conditionIDs, 3) == 2;
+curved_idx = mod(conditionIDs, 3) == 2;
 
 straight_trials = find(straight_idx);
 curved_trials   = find(curved_idx);
 
-% -------------------------------------------------------------------------
-% Binning parameters
-% -------------------------------------------------------------------------
-bin_size    = 50;   % ms
-step_size   = 10;   % ms
-pre_window  = 500;  % ms before alignment event
-post_window = 800;  % ms after alignment event
+bin_size = 50; 
+step_size = 10; 
+pre_window = 500; 
+post_window = 800;
 
 bin_centers = (-pre_window + bin_size/2) : step_size : (post_window - bin_size/2);
-num_bins    = numel(bin_centers);
-num_units   = numel(R(1).unit);
-
-% -------------------------------------------------------------------------
-% Alignment timestamps
-% -------------------------------------------------------------------------
+num_bins = numel(bin_centers);
+num_units = numel(R(1).unit);
 target_align = [R.targetAppearsTime];
-gocue_align  = [R.goCueTime];
-onset_align  = [R.moveOnsetTime];
+gocue_align = [R.goCueTime];
+onset_align = [R.moveOnsetTime];
 
-% -------------------------------------------------------------------------
-% Direction IDs per condition type
-% -------------------------------------------------------------------------
-straight_dir_ids   = floor(conditionIDs(straight_idx) / 3);
-curved_dir_ids     = floor(conditionIDs(curved_idx)   / 3);
+
+straight_dir_ids = floor(conditionIDs(straight_idx) / 3);
+curved_dir_ids = floor(conditionIDs(curved_idx) / 3);
 
 unique_straight_dirs = unique(straight_dir_ids);
-unique_curved_dirs   = unique(curved_dir_ids);
+unique_curved_dirs = unique(curved_dir_ids);
 
-% -------------------------------------------------------------------------
-% Pre-allocate Fano Factor arrays  [units x bins x cond]
-% -------------------------------------------------------------------------
 ff_target = nan(num_units, num_bins, 2);
-ff_gocue  = nan(num_units, num_bins, 2);
-ff_onset  = nan(num_units, num_bins, 2);
-
-% -------------------------------------------------------------------------
-% Main loop: units x conditions
-% -------------------------------------------------------------------------
+ff_gocue = nan(num_units, num_bins, 2);
+ff_onset = nan(num_units, num_bins, 2);
 for unit = 1:num_units
     for cond = 1:2
         if cond == 1
-            trial_ids   = straight_trials;
-            dir_ids     = straight_dir_ids;
+            trial_ids = straight_trials;
+            dir_ids = straight_dir_ids;
             unique_dirs = unique_straight_dirs;
         else
-            trial_ids   = curved_trials;
-            dir_ids     = curved_dir_ids;
+            trial_ids = curved_trials;
+            dir_ids = curved_dir_ids;
             unique_dirs = unique_curved_dirs;
         end
 
         num_dirs = numel(unique_dirs);
 
         ff_target_by_dir = nan(num_dirs, num_bins);
-        ff_gocue_by_dir  = nan(num_dirs, num_bins);
-        ff_onset_by_dir  = nan(num_dirs, num_bins);
+        ff_gocue_by_dir = nan(num_dirs, num_bins);
+        ff_onset_by_dir = nan(num_dirs, num_bins);
 
         for d = 1:num_dirs
-            dir_mask      = dir_ids == unique_dirs(d);
+            dir_mask = dir_ids == unique_dirs(d);
             dir_trial_ids = trial_ids(dir_mask);
             num_dir_trials = numel(dir_trial_ids);
 
             counts_target = nan(num_dir_trials, num_bins);
-            counts_gocue  = nan(num_dir_trials, num_bins);
-            counts_onset  = nan(num_dir_trials, num_bins);
+            counts_gocue = nan(num_dir_trials, num_bins);
+            counts_onset = nan(num_dir_trials, num_bins);
 
             for trial = 1:num_dir_trials
-                tr          = dir_trial_ids(trial);
+                tr = dir_trial_ids(trial);
                 spike_times = R(tr).unit(unit).spikeTimes;
 
                 rel_target = spike_times - target_align(tr);
-                rel_gocue  = spike_times - gocue_align(tr);
-                rel_onset  = spike_times - onset_align(tr);
+                rel_gocue = spike_times - gocue_align(tr);
+                rel_onset = spike_times - onset_align(tr);
 
                 for b = 1:num_bins
                     t_lo = bin_centers(b) - bin_size/2;
@@ -123,43 +90,37 @@ for unit = 1:num_units
     end
 end
 
-% -------------------------------------------------------------------------
-% Plotting
-% -------------------------------------------------------------------------
 mean_ff = @(ff, cond) nanmean(ff(:, :, cond), 1);
-sem_ff  = @(ff, cond) nanstd(ff(:, :, cond), 0, 1) / ...
-                       sqrt(sum(~all(isnan(ff(:,:,cond)), 2)));
+sem_ff  = @(ff, cond) nanstd(ff(:, :, cond), 0, 1) / sqrt(sum(~all(isnan(ff(:,:,cond)), 2)));
 
-colors       = struct('straight', [0 0 0.8], 'curved', [0.8 0 0]);
+colors = struct('straight', [0 0 0.8], 'curved', [0.8 0 0]);
 align_labels = {'Target Appearance', 'Go Cue', 'Movement Onset'};
-x_labels     = {'Time from Target Appearance (ms)', ...
+x_labels = {'Time from Target Appearance (ms)', ...
                  'Time from Go Cue (ms)', ...
                  'Time from Movement Onset (ms)'};
 ff_all = {ff_target, ff_gocue, ff_onset};
 
 figure('Position', [100 100 1000 500]);
-
 for a = 1:3
     subplot(1, 3, a);
     hold on;
     ff = ff_all{a};
-
     for cond = 1:2
-        m   = mean_ff(ff, cond);
+        m = mean_ff(ff, cond);
         sem = sem_ff(ff, cond);
 
         if cond == 1
-            col      = colors.straight;
-            lbl      = 'Straight';
+            col = colors.straight;
+            lbl = 'Straight';
             fill_lbl = 'SEM Straight';
         else
-            col      = colors.curved;
-            lbl      = 'Curved';
+            col = colors.curved;
+            lbl = 'Curved';
             fill_lbl = 'SEM Curved';
         end
 
         fill([bin_centers, fliplr(bin_centers)], ...
-             [m + sem,     fliplr(m - sem)], ...
+             [m + sem, fliplr(m - sem)], ...
              col, 'FaceAlpha', 0.2, 'EdgeColor', 'none', ...
              'DisplayName', fill_lbl);
         plot(bin_centers, m, '-', 'Color', col, 'LineWidth', 2, ...
@@ -178,28 +139,13 @@ for a = 1:3
         legend('Location', 'best');
     end
 end
-
 sgtitle('Population Fano Factor');
+end
 
-end % trialToTrialVariability
-
-
-% =========================================================================
-% Local helper
-% =========================================================================
 function ff = compute_fano_factor(counts)
-% compute_fano_factor  Variance-to-mean ratio across trials per time bin.
-%
-%   ff = compute_fano_factor(counts)
-%
-%   Input:
-%     counts  - [num_trials x num_bins] spike-count matrix
-%   Output:
-%     ff      - [1 x num_bins] Fano Factor (NaN where mean == 0)
-
-    m  = mean(counts, 1);
-    v  = var(counts,  0, 1);
+    m = mean(counts, 1);
+    v = var(counts,  0, 1);
     ff = nan(size(m));
-    valid      = m > 0;
-    ff(valid)  = v(valid) ./ m(valid);
+    valid = m > 0;
+    ff(valid) = v(valid) ./ m(valid);
 end
